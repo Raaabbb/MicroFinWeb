@@ -1,0 +1,23 @@
+{
+    "name": "Modern Fintech",
+    "sections": [
+        {
+            "id": "services",
+            "label": "Show Services",
+            "target": "sec_services",
+            "default_state": true
+        },
+        {
+            "id": "testimonials",
+            "label": "Show Testimonials",
+            "target": "sec_testimonials",
+            "default_state": true
+        },
+        {
+            "id": "app_promo",
+            "label": "Show App Download",
+            "target": "sec_app",
+            "default_state": true
+        }
+    ]
+}

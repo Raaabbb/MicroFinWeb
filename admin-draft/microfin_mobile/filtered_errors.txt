@@ -1,0 +1,280 @@
+﻿
+  error - Missing concrete 
+implementation of 
+'abstract class State<T 
+extends StatefulWidget> 
+with Diagnosticable.build' 
+- lib\screens\client_verifi
+cation_screen.dart:16:7 - n
+on_abstract_class_inherits_
+abstract_member
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:122:14 - 
+undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:135:12 - 
+undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:137:12 - 
+undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:141:7 - 
+undefined_method
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:216:
+5 - expected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:217:15 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:217:
+15 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:217:
+15 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:217:16 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:217:
+16 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:217:
+16 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:218:13 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:218:
+13 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:218:
+13 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:218:14 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:218:
+14 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:218:
+14 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:219:11 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:219:
+11 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:219:
+11 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:219:12 - 
+missing_identifier
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:219:
+12 - unexpected_token
+  error - Undefined name 
+'primary' - lib\screens\cli
+ent_verification_screen.dar
+t:220:27 - 
+undefined_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:220:
+34 - expected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:220:35 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:220:
+35 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:220:
+35 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:221:9 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:221:
+9 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:221:
+9 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:221:10 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:221:
+10 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:221:
+10 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:221:11 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:221:
+11 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:221:
+11 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:222:7 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:222:
+7 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:222:
+7 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:222:8 - 
+missing_identifier
+  error - Expected to find 
+';' - lib\screens\client_ve
+rification_screen.dart:222:
+8 - expected_token
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:222:
+8 - unexpected_token
+  error - Expected an 
+identifier - lib\screens\cl
+ient_verification_screen.da
+rt:223:5 - 
+missing_identifier
+  error - Unexpected text 
+';' - lib\screens\client_ve
+rification_screen.dart:223:
+5 - unexpected_token
+  error - Undefined name 
+'_goBack' - lib\screens\cli
+ent_verification_screen.dar
+t:239:28 - 
+undefined_identifier
+  error - Undefined name 
+'_goBack' - lib\screens\cli
+ent_verification_screen.dar
+t:361:26 - 
+undefined_identifier
+  error - The method 
+'_validateStep' isn't 
+defined for the type '_Clie
+ntVerificationScreenState' 
+- lib\screens\client_verifi
+cation_screen.dart:375:20 
+- undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:376:17 - 
+undefined_method
+  error - The method 
+'_submit' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:379:29 - 
+undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:756:28 - 
+undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:773:9 - 
+undefined_method
+  error - The method 
+'_showIdVerifiedDialog' 
+isn't defined for the type 
+'_ClientVerificationScreenS
+tate' - lib\screens\client_
+verification_screen.dart:80
+6:22 - undefined_method
+  error - The method 
+'_showIdVerifiedDialog' 
+isn't defined for the type 
+'_ClientVerificationScreenS
+tate' - lib\screens\client_
+verification_screen.dart:80
+9:22 - undefined_method
+  error - The method 
+'_showSnack' isn't defined 
+for the type '_ClientVerifi
+cationScreenState' - lib\sc
+reens\client_verification_s
+creen.dart:812:7 - 
+undefined_method
+
+

@@ -1,0 +1,9 @@
+<?php
+
+return [
+    'APP_BASE_URL' => 'https://microfinwebb-production.up.railway.app',
+    'BREVO_API_KEY' => 'replace-with-your-brevo-api-key',
+    'BREVO_SENDER_EMAIL' => 'replace-with-your-verified-sender@example.com',
+    'BREVO_SENDER_NAME' => 'MicroFin',
+    'BREVO_SANDBOX_MODE' => false,
+];

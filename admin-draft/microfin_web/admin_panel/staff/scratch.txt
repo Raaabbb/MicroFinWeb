@@ -1,0 +1,338 @@
+        async function loadClients(search = '', filter = null, btn = null) {
+            const activeFilter = filter !== null ? filter : getActiveClientFilter();
+            const filterTabs = Array.from(document.querySelectorAll('#clientFilterTabs .filter-tab'));
+            const activeBtn = btn || filterTabs.find(t => t.dataset.clientFilter === activeFilter);
+            if (activeBtn) {
+                filterTabs.forEach(t => t.classList.remove('active'));
+                activeBtn.classList.add('active');
+            }
+            const tbody = document.getElementById('clientsTbody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>';
+            const r = await fetch(API.clients + '?action=list' + (search ? '&search=' + encodeURIComponent(search) : ''));
+            const d = await r.json();
+            const rows = (d.data || []).filter(c => matchesClientFilter(c, activeFilter));
+            if (!rows.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No clients found for this filter.</td></tr>'; return; }
+            tbody.innerHTML = rows.map(c => `<tr>
+        <td class="td-bold">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</td>
+        <td class="td-muted">${c.email_address && c.email_address.trim() ? escapeHtml(c.email_address) : '—'}</td>
+        <td class="td-muted">${c.contact_number && c.contact_number.trim() ? escapeHtml(c.contact_number) : '—'}</td>
+        <td class="td-muted">${fmtDate(c.registration_date)}</td>
+        <td>${c.user_type === 'Client' ? '<span class="badge badge-blue">?? App</span>' : '<span class="badge badge-gray">?? Walk-in</span>'}</td>
+        <td>${badge((c.document_verification_status !== 'Verified' && c.document_verification_status !== 'Approved' && c.client_status === 'Active') ? 'Inactive' : c.client_status)}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="viewClient(${c.client_id})">View Profile</button></td>
+    </tr>`).join('');
+        }
+
+        async function viewClient(id, source = null) {
+            openModal('clientDetailModal');
+            document.getElementById('clientDetailBody').innerHTML = '<div style="text-align:center;padding:32px;"><span class="spinner"></span></div>';
+            const r = await fetch(API.clients + `?action=view&client_id=${id}`);
+            const d = await r.json();
+            if (d.status !== 'success') { document.getElementById('clientDetailBody').innerHTML = `<p style="color:#ef4444;">${d.message}</p>`; return; }
+            const c = d.data;
+            document.getElementById('clientDetailTitle').textContent = c.first_name + ' ' + c.last_name;
+
+            const footer = document.getElementById('clientDetailFooter');
+            if (footer) {
+                let footerHtml = `<button class="btn btn-outline" onclick="closeModal('clientDetailModal')">Close</button>`;
+                if (c.verification_status !== 'Approved') {
+                    footerHtml += `<button class="btn btn-success" onclick="verifyClientFully(${c.client_id})"><span class="material-symbols-rounded ms">verified</span> Verify Client</button>`;
+                }
+                footer.innerHTML = footerHtml;
+            }
+
+            const loansHtml = (c.loans || []).length ? (c.loans || []).map(l => `<tr>
+        <td class="td-mono">${l.loan_number}</td>
+        <td>${l.product_name}</td>
+        <td>${fmt(l.principal_amount)}</td>
+        <td style="color:var(--brand);font-weight:600;">${fmt(l.remaining_balance)}</td>
+        <td>${fmtDate(l.next_payment_due)}</td>
+        <td>${badge(l.loan_status)}</td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="6">No active loans.</td></tr>';
+
+            const docsHtml = (c.documents || []).length ? (c.documents || []).map(d => `<tr>
+        <td class="td-bold">${d.document_name} ${d.is_required ? '<span class="badge badge-amber" style="font-size:.65rem;padding:2px 6px;">Req</span>' : ''}</td>
+        <td>${documentHref(d) ? `<a href="${escapeHtml(documentHref(d))}" target="_blank" class="btn btn-sm btn-outline"><span class="material-symbols-rounded ms" style="font-size:16px;">visibility</span> View</a>` : '<span class="td-muted">Not uploaded</span>'}</td>
+        <td class="td-muted">${fmtDate(d.upload_date)}</td>
+        <td>${badge(d.verification_status || 'Pending')}</td>
+        <td>
+            ${d.file_path && d.verification_status !== 'Verified' ? `<button class="btn btn-sm" style="background:#dcfce7;color:#166534;border:none;" onclick="verifyDoc(${d.client_document_id}, 'Verified', ${c.client_id})">Verify</button> <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;border:none;" onclick="verifyDoc(${d.client_document_id}, 'Rejected', ${c.client_id})">Reject</button>` : '—'}
+        </td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="5">No documents submitted.</td></tr>';
+
+            // DOB '1990-01-01' is the mobile registration placeholder — show as incomplete
+            const dob = c.date_of_birth === '1990-01-01' ? '<span style="color:var(--muted);font-style:italic;">Not provided</span>' : fmtDate(c.date_of_birth);
+            const sourceLabel = c.user_type === 'Client'
+                ? '<span class="badge badge-blue">?? Mobile App</span>'
+                : '<span class="badge badge-gray">?? Walk-in / Staff</span>';
+            const phone = c.contact_number && c.contact_number.trim() ? c.contact_number : '<span style="color:var(--muted);font-style:italic;">Not provided</span>';
+            const income = c.monthly_income && parseFloat(c.monthly_income) > 0 ? fmt(c.monthly_income) : '<span style="color:var(--muted);font-style:italic;">Not provided</span>';
+
+            document.getElementById('clientDetailBody').innerHTML = `
+        <div class="form-grid" style="margin-bottom:20px;">
+            <div><p style="font-size:.72rem;color:var(--muted);">Email</p><p style="font-weight:500;">${c.email_address || '—'}</p></div>
+            <div><p style="font-size:.72rem;color:var(--muted);">Phone</p><p style="font-weight:500;">${phone}</p></div>
+            <div><p style="font-size:.72rem;color:var(--muted);">Date of Birth</p><p style="font-weight:500;">${dob}</p></div>
+            <div><p style="font-size:.72rem;color:var(--muted);">Status</p>${badge(c.client_status)}</div>
+            <div><p style="font-size:.72rem;color:var(--muted);">Address</p><p style="font-weight:500;">${[c.present_street, c.present_barangay, c.present_city, c.present_province].filter(Boolean).join(', ') || '<span style="color:var(--muted);font-style:italic;">Not provided</span>'}</p></div>
+            <div><p style="font-size:.72rem;color:var(--muted);">Monthly Income</p><p style="font-weight:500;">${income}</p></div>
+            <div><p style="font-size:.72rem;color:var(--muted);">Source</p>${sourceLabel}</div>
+        </div>
+        
+        <p style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;">Submitted Documents</p>
+        <div style="overflow-x:auto; margin-bottom: 24px;">
+        <table><thead><tr style="background:var(--body-bg);">
+            <th>Document Requirement</th><th>File</th><th>Uploaded</th><th>Status</th><th>Action</th>
+        </tr></thead><tbody>${docsHtml}</tbody></table></div>
+
+        <p style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;">Loan History</p>
+        <div style="overflow-x:auto;">
+        <table><thead><tr style="background:var(--body-bg);">
+            <th>Loan #</th><th>Product</th><th>Principal</th><th>Balance</th><th>Next Due</th><th>Status</th>
+        </tr></thead><tbody>${loansHtml}</tbody></table></div>`;
+        }
+
+        async function loadClients(search = '', filter = null, btn = null) {
+            const activeFilter = filter !== null ? filter : getActiveClientFilter();
+            const filterTabs = Array.from(document.querySelectorAll('#clientFilterTabs .filter-tab'));
+            const activeBtn = btn || filterTabs.find(t => t.dataset.clientFilter === activeFilter);
+            if (activeBtn) {
+                filterTabs.forEach(t => t.classList.remove('active'));
+                activeBtn.classList.add('active');
+            }
+            const tbody = document.getElementById('clientsTbody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>';
+            const r = await fetch(API.clients + '?action=list' + (search ? '&search=' + encodeURIComponent(search) : ''));
+            const d = await r.json();
+            const rows = (d.data || []).filter(c => matchesClientFilter(c, activeFilter));
+            if (!rows.length) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No clients found for this filter.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(c => `<tr>
+        <td class="td-bold">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</td>
+        <td class="td-muted">${c.email_address && c.email_address.trim() ? escapeHtml(c.email_address) : '—'}</td>
+        <td class="td-muted">${c.contact_number && c.contact_number.trim() ? escapeHtml(c.contact_number) : '—'}</td>
+        <td class="td-muted">${fmtDate(c.registration_date)}</td>
+        <td>${badge((c.document_verification_status !== 'Verified' && c.document_verification_status !== 'Approved' && c.client_status === 'Active') ? 'Inactive' : c.client_status)}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="viewClient(${c.client_id})">View Profile</button></td>
+    </tr>`).join('');
+        }
+
+        async function viewClient(id, source = null) {
+            openModal('clientDetailModal');
+            document.getElementById('clientDetailBody').innerHTML = '<div style="text-align:center;padding:32px;"><span class="spinner"></span></div>';
+            const r = await fetch(API.clients + `?action=view&client_id=${id}`);
+            const d = await r.json();
+            if (d.status !== 'success') {
+                document.getElementById('clientDetailBody').innerHTML = `<p style="color:#ef4444;">${escapeHtml(d.message)}</p>`;
+                return;
+            }
+
+            const c = d.data;
+            const fullName = [c.first_name, c.middle_name, c.last_name, c.suffix].map(part => String(part ?? '').trim()).filter(Boolean).join(' ');
+            const presentAddress = joinAddress([c.present_street, c.present_barangay, c.present_city, c.present_province, c.present_postal_code]);
+            const permanentAddress = joinAddress([c.permanent_street, c.permanent_barangay, c.permanent_city, c.permanent_province, c.permanent_postal_code]);
+            const coMakerAddress = joinAddress([c.comaker_house_no, c.comaker_street, c.comaker_barangay, c.comaker_city, c.comaker_province, c.comaker_postal_code]);
+            const verificationStatus = c.verification_status || c.document_verification_status || 'Pending';
+            const verificationBadge = badge(verificationStatus);
+            const accountEmail = !isBlank(c.email_address) ? escapeHtml(c.email_address) : formatTextValue(c.user_email);
+            const upgrade = c.credit_upgrade || null;
+
+            document.getElementById('clientDetailTitle').textContent = fullName || `${c.first_name || ''} ${c.last_name || ''}`.trim();
+
+            const footer = document.getElementById('clientDetailFooter');
+            if (footer) {
+                let footerHtml = `<button class="btn btn-outline" onclick="closeModal('clientDetailModal')">Close</button>`;
+                if (c.client_status === 'Inactive' && verificationStatus === 'Approved') {
+                    footerHtml += `<button class="btn btn-brand" onclick="updateClientStatus(${c.client_id}, 'Active')"><span class="material-symbols-rounded ms">toggle_on</span> Activate Client</button>`;
+                } else if (verificationStatus !== 'Approved' && source !== 'credit-accounts') {
+                    footerHtml += `<button class="btn btn-success" onclick="verifyClientFully(${c.client_id})"><span class="material-symbols-rounded ms">verified</span> Verify Client</button>`;
+                }
+                footer.innerHTML = footerHtml;
+            }
+
+            const applicationsHtml = (c.applications || []).length ? c.applications.map(app => `<tr>
+        <td class="td-mono td-bold">${escapeHtml(app.application_number)}</td>
+        <td>${escapeHtml(app.product_name)}</td>
+        <td>${fmt(app.requested_amount)}</td>
+        <td class="td-muted">${fmtDate(app.submitted_date || app.created_at)}</td>
+        <td>${applicationMonitorBadge(app.application_status)}</td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="5">No applications found.</td></tr>';
+
+            const docsHtml = (c.documents || []).length ? c.documents.map(doc => `<tr>
+        <td class="td-bold">${escapeHtml(doc.document_name)} ${doc.is_required ? '<span class="badge badge-amber" style="font-size:.65rem;padding:2px 6px;">Req</span>' : ''}</td>
+        <td>${documentHref(doc) ? `<a href="${escapeHtml(documentHref(doc))}" target="_blank" class="btn btn-sm btn-outline"><span class="material-symbols-rounded ms" style="font-size:16px;">visibility</span> View</a>` : '<span class="td-muted">Not uploaded</span>'}</td>
+        <td class="td-muted">${fmtDate(doc.upload_date)}</td>
+        <td>${badge(doc.verification_status || 'Pending')}</td>
+        <td>${doc.file_path && doc.verification_status !== 'Verified' ? `<button class="btn btn-sm" style="background:#dcfce7;color:#166534;border:none;" onclick="verifyDoc(${doc.client_document_id}, 'Verified', ${c.client_id})">Verify</button> <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;border:none;" onclick="verifyDoc(${doc.client_document_id}, 'Rejected', ${c.client_id})">Reject</button>` : 'â€”'}</td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="5">No documents submitted.</td></tr>';
+
+            const loansHtml = (c.loans || []).length ? c.loans.map(loan => `<tr>
+        <td class="td-mono">${escapeHtml(loan.loan_number)}</td>
+        <td>${escapeHtml(loan.product_name)}</td>
+        <td>${fmt(loan.principal_amount)}</td>
+        <td style="color:var(--brand);font-weight:600;">${fmt(loan.remaining_balance)}</td>
+        <td>${fmtDate(loan.next_payment_due)}</td>
+        <td>${badge(loan.loan_status)}</td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="6">No loans found.</td></tr>';
+
+            document.getElementById('clientDetailBody').innerHTML = `
+        <div class="detail-sections">
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">badge</span>
+                    <div class="detail-section-title">Personal Information</div>
+                </div>
+                <div class="detail-grid">
+                    ${renderDetailItem('Full Name', formatTextValue(fullName))}
+                    ${renderDetailItem('Email Address', accountEmail)}
+                    ${renderDetailItem('Phone Number', formatTextValue(c.contact_number))}
+                    ${renderDetailItem('Date of Birth', formatDateValue(c.date_of_birth))}
+                    ${renderDetailItem('Gender', formatTextValue(c.gender))}
+                    ${renderDetailItem('Civil Status', formatTextValue(c.civil_status))}
+                    ${renderDetailItem('Nationality', formatTextValue(c.nationality))}
+                    ${renderDetailItem('Source', sourceBadge(c.user_type))}
+                    ${renderDetailItem('Client Status', badge(c.client_status))}
+                    ${renderDetailItem('Verification Status', verificationBadge)}
+                    ${renderDetailItem('Registered', formatDateValue(c.registration_date))}
+                    ${renderDetailItem('Last Login', formatDateValue(c.last_login, 'Never logged in'))}
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">work</span>
+                    <div class="detail-section-title">Employment & Financial Profile</div>
+                </div>
+                <div class="detail-grid">
+                    ${renderDetailItem('Employment Status', formatTextValue(c.employment_status))}
+                    ${renderDetailItem('Occupation', formatTextValue(c.occupation))}
+                    ${renderDetailItem('Employer Name', formatTextValue(c.employer_name))}
+                    ${renderDetailItem('Monthly Income', formatMoneyValue(c.monthly_income))}
+                    ${renderDetailItem('Credit Limit', formatMoneyValue(c.credit_limit))}
+                    ${renderDetailItem('Last Seen Credit Limit', formatMoneyValue(c.last_seen_credit_limit))}
+                </div>
+            </section>
+
+            ${upgrade ? `
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">trending_up</span>
+                    <div class="detail-section-title">Credit Growth & Upgrade</div>
+                </div>
+                <div class="detail-grid">
+
+                    ${renderDetailItem('Upgrade Status', upgradeStatusBadge(upgrade))}
+                    ${renderDetailItem('Potential Upgraded Limit', formatUpgradeLimit(upgrade.potential_upgraded_limit))}
+                    ${renderDetailItem('Completed Loans', escapeHtml(`${upgrade.completed_loans} / ${upgrade.min_completed_loans} required`))}
+                    ${renderDetailItem('Late Payments', escapeHtml(`${upgrade.late_payments} / ${upgrade.max_allowed_late_payments} allowed`))}
+                    ${renderDetailItem('Maximum Limit', formatMoneyValue(upgrade.absolute_max_limit, 'No maximum set'))}
+                    ${renderDetailItem('Upgrade Note', escapeHtml(upgrade.status_note || upgrade.next_limit_note || 'No upgrade note available.'), true)}
+                </div>
+            </section>` : ''}
+
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">home_pin</span>
+                    <div class="detail-section-title">Address Details</div>
+                </div>
+                <div class="detail-grid">
+                    ${renderDetailItem('Present Address', formatTextValue(presentAddress), true)}
+                    ${renderDetailItem('Permanent Address', formatTextValue(permanentAddress), true)}
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">groups</span>
+                    <div class="detail-section-title">Co-Maker Information</div>
+                </div>
+                <div class="detail-grid">
+                    ${renderDetailItem('Co-Maker Name', formatTextValue(c.comaker_name))}
+                    ${renderDetailItem('Relationship', formatTextValue(c.comaker_relationship))}
+                    ${renderDetailItem('Contact Number', formatTextValue(c.comaker_contact))}
+                    ${renderDetailItem('Monthly Income', formatMoneyValue(c.comaker_income))}
+                    ${renderDetailItem('Address', formatTextValue(coMakerAddress), true)}
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">description</span>
+                    <div class="detail-section-title">Application History</div>
+                </div>
+                <div class="detail-table">
+                    <table>
+                        <thead><tr style="background:var(--body-bg);">
+                            <th>App #</th><th>Product</th><th>Requested</th><th>Submitted</th><th>Status</th>
+                        </tr></thead>
+                        <tbody>${applicationsHtml}</tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">folder_open</span>
+                    <div class="detail-section-title">Submitted Documents</div>
+                </div>
+                <div class="detail-table">
+                    <table>
+                        <thead><tr style="background:var(--body-bg);">
+                            <th>Document Requirement</th><th>File</th><th>Uploaded</th><th>Status</th><th>Action</th>
+                        </tr></thead>
+                        <tbody>${docsHtml}</tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <div class="detail-section-header">
+                    <span class="material-symbols-rounded ms">account_balance_wallet</span>
+                    <div class="detail-section-title">Loan History</div>
+                </div>
+                <div class="detail-table">
+                    <table>
+                        <thead><tr style="background:var(--body-bg);">
+                            <th>Loan #</th><th>Product</th><th>Principal</th><th>Balance</th><th>Next Due</th><th>Status</th>
+                        </tr></thead>
+                        <tbody>${loansHtml}</tbody>
+                    </table>
+                </div>
+            </section>
+        </div>`;
+        }
+
+        async function loadClients(search = '', filter = null, btn = null) {
+            const activeFilter = filter !== null ? filter : getActiveClientFilter();
+            const filterTabs = Array.from(document.querySelectorAll('#clientFilterTabs .filter-tab'));
+            const activeBtn = btn || filterTabs.find(t => t.dataset.clientFilter === activeFilter);
+            if (activeBtn) {
+                filterTabs.forEach(t => t.classList.remove('active'));
+                activeBtn.classList.add('active');
+            }
+            const tbody = document.getElementById('clientsTbody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>';
+            const r = await fetch(API.clients + '?action=list' + (search ? '&search=' + encodeURIComponent(search) : ''));
+            const d = await r.json();
+            const rows = (d.data || []).filter(c => matchesClientFilter(c, activeFilter));
+            if (!rows.length) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No clients found for this filter.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(c => `<tr>
+        <td class="td-bold">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</td>
+        <td class="td-muted">${c.email_address && c.email_address.trim() ? escapeHtml(c.email_address) : '-'}</td>
+        <td class="td-muted">${c.contact_number && c.contact_number.trim() ? escapeHtml(c.contact_number) : '-'}</td>
+        <td class="td-muted">${fmtDate(c.registration_date)}</td>
+        <td>${sourceBadge(c.user_type)}</td>
+        <td>${badge((c.document_verification_status !== 'Verified' && c.document_verification_status !== 'Approved' && c.client_status === 'Active') ? 'Inactive' : c.client_status)}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="viewClient(${c.client_id})">View Profile</button></td>
+    </tr>`).join('');
+        }
+
+        async function verifyDoc(doc_id, status, client_id) {

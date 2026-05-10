@@ -1,0 +1,6 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "bash microfin_platform/start.sh"
+restartPolicyType = "ON_FAILURE"

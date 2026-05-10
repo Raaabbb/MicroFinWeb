@@ -1,0 +1,1037 @@
+-- =====================================================
+-- MicroFin DB Schema
+-- Fixed for MySQL Workbench compatibility
+-- =====================================================
+
+SET FOREIGN_KEY_CHECKS = 0;
+SET NAMES utf8mb4;
+
+CREATE DATABASE IF NOT EXISTS `microfin_db`
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE `microfin_db`;
+
+-- ---------------------------------------------------
+-- Drop tables in safe order (children first)
+-- ---------------------------------------------------
+DROP TABLE IF EXISTS `user_sessions`;
+DROP TABLE IF EXISTS `tenant_website_content`;
+DROP TABLE IF EXISTS `tenant_legitimacy_documents`;
+DROP TABLE IF EXISTS `tenant_feature_toggles`;
+DROP TABLE IF EXISTS `tenant_branding`;
+DROP TABLE IF EXISTS `tenant_billing_payment_methods`;
+DROP TABLE IF EXISTS `tenant_billing_invoices`;
+DROP TABLE IF EXISTS `system_settings`;
+DROP TABLE IF EXISTS `role_permissions`;
+DROP TABLE IF EXISTS `payments`;
+DROP TABLE IF EXISTS `payment_transactions`;
+DROP TABLE IF EXISTS `otp_verifications`;
+DROP TABLE IF EXISTS `notifications`;
+DROP TABLE IF EXISTS `credit_scores`;
+DROP TABLE IF EXISTS `credit_investigations`;
+DROP TABLE IF EXISTS `client_documents`;
+DROP TABLE IF EXISTS `chat_messages`;
+DROP TABLE IF EXISTS `backup_logs`;
+DROP TABLE IF EXISTS `audit_logs`;
+DROP TABLE IF EXISTS `application_documents`;
+DROP TABLE IF EXISTS `amortization_schedule`;
+DROP TABLE IF EXISTS `loans`;
+DROP TABLE IF EXISTS `loan_applications`;
+DROP TABLE IF EXISTS `loan_products`;
+DROP TABLE IF EXISTS `document_types`;
+DROP TABLE IF EXISTS `clients`;
+DROP TABLE IF EXISTS `employees`;
+DROP TABLE IF EXISTS `users`;
+DROP TABLE IF EXISTS `user_roles`;
+DROP TABLE IF EXISTS `permissions`;
+DROP TABLE IF EXISTS `tenants`;
+
+-- ---------------------------------------------------
+-- Table: `tenants`
+-- ---------------------------------------------------
+CREATE TABLE `tenants` (
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci COMMENT 'System-generated immutable tenant identifier',
+  `tenant_name` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `tenant_slug` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci COMMENT 'URL-safe identifier',
+  `estimated_loans` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `onboarding_deadline` DATETIME DEFAULT NULL,
+  `company_address` TEXT COLLATE utf8mb4_unicode_ci,
+  `plan_tier` VARCHAR(250) DEFAULT 'Starter' COLLATE utf8mb4_unicode_ci,
+  `scheduled_plan_tier` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `scheduled_plan_effective_date` DATE DEFAULT NULL,
+  `max_clients` INT DEFAULT 1000,
+  `max_users` INT DEFAULT 250,
+  `storage_limit_gb` DECIMAL(5,2) DEFAULT 5.00,
+  `modules_enabled` JSON DEFAULT NULL,
+  `mrr` DECIMAL(10,2) DEFAULT 0.00,
+  `billing_cycle` ENUM('Monthly','Quarterly','Yearly') COLLATE utf8mb4_unicode_ci DEFAULT 'Monthly',
+  `next_billing_date` DATE DEFAULT NULL,
+  `setup_completed` TINYINT(1) DEFAULT 0,
+  `setup_current_step` INT DEFAULT 0,
+  `status` ENUM('Pending','Active','Suspended','Rejected','New','In Contact','Closed') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
+  `request_type` ENUM('tenant_application','talk_to_expert') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'tenant_application',
+  `concern_category` VARCHAR(150) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `assigned_expert_user_id` INT DEFAULT NULL,
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+  `deleted_by` INT DEFAULT NULL,
+  `deletion_reason` TEXT COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`tenant_id`),
+  UNIQUE KEY `tenant_slug` (`tenant_slug`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_request_type_status` (`request_type`, `status`),
+  KEY `idx_request_type_created_at` (`request_type`, `created_at`),
+  KEY `idx_assigned_expert_user` (`assigned_expert_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `permissions`
+-- ---------------------------------------------------
+CREATE TABLE `permissions` (
+  `permission_id` INT NOT NULL AUTO_INCREMENT,
+  `permission_code` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci COMMENT 'e.g. CREATE_ACCOUNT, APPROVE_LOAN',
+  `module` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `description` TEXT COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`permission_id`),
+  UNIQUE KEY `permission_code` (`permission_code`)
+) ENGINE=InnoDB AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `user_roles`
+-- ---------------------------------------------------
+CREATE TABLE `user_roles` (
+  `role_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci COMMENT 'NULL for platform-level roles like super_admin',
+  `role_name` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `role_description` TEXT COLLATE utf8mb4_unicode_ci,
+  `is_system_role` TINYINT(1) DEFAULT 0,
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+  `deleted_by` INT DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`role_id`),
+  UNIQUE KEY `uq_tenant_role` (`tenant_id`, `role_name`),
+  CONSTRAINT `user_roles_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `users`
+-- ---------------------------------------------------
+CREATE TABLE `users` (
+  `user_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci COMMENT 'NULL only for Super Admins',
+  `username` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `email` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `phone_number` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `password_hash` VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `email_verified` TINYINT(1) DEFAULT 0,
+  `first_name` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `last_name` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `middle_name` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `suffix` VARCHAR(10) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `date_of_birth` DATE DEFAULT NULL,
+  `force_password_change` TINYINT(1) DEFAULT 0,
+  `role_id` INT NOT NULL,
+  `user_type` ENUM('Employee','Client','Admin','applicant','inquirer','Super Admin') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` ENUM('Active','Inactive','Suspended','Locked') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `can_manage_billing` TINYINT(1) NOT NULL DEFAULT 0,
+  `verification_token` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `reset_token` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `reset_token_expiry` DATETIME DEFAULT NULL,
+  `last_login` DATETIME DEFAULT NULL,
+  `failed_login_attempts` INT DEFAULT 0,
+  `two_fa_enabled` TINYINT(1) DEFAULT 0,
+  `two_fa_secret` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `two_fa_recovery_codes` TEXT COLLATE utf8mb4_unicode_ci,
+  `ui_theme` ENUM('light','dark') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'light',
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `uq_tenant_username` (`tenant_id`, `username`),
+  UNIQUE KEY `uq_tenant_email` (`tenant_id`, `email`),
+  KEY `role_id` (`role_id`),
+  KEY `idx_reset_token` (`reset_token`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_status` (`status`),
+  CONSTRAINT `users_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `users_ibfk_2` FOREIGN KEY (`role_id`) REFERENCES `user_roles` (`role_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `employees`
+-- ---------------------------------------------------
+CREATE TABLE `employees` (
+  `employee_id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `employee_code` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `first_name` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `middle_name` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `last_name` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `suffix` VARCHAR(10) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `department` ENUM('Admin','Sales and Marketing','Collections','Loan Processing') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `position` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `contact_number` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `alternate_contact` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `emergency_contact_name` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `emergency_contact_number` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `hire_date` DATE NOT NULL,
+  `employment_status` ENUM('Active','On Leave','Resigned','Terminated') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `profile_picture` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`employee_id`),
+  UNIQUE KEY `user_id` (`user_id`),
+  UNIQUE KEY `uq_tenant_empcode` (`tenant_id`, `employee_code`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `employees_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `employees_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `clients`
+-- ---------------------------------------------------
+CREATE TABLE `clients` (
+  `client_id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `client_code` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `first_name` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `middle_name` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `last_name` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `suffix` VARCHAR(10) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `date_of_birth` DATE NOT NULL,
+  `gender` ENUM('Male','Female','Other') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `civil_status` ENUM('Single','Married','Widowed','Divorced','Separated') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `nationality` VARCHAR(50) DEFAULT 'Filipino' COLLATE utf8mb4_unicode_ci,
+  `contact_number` VARCHAR(20) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `alternate_contact` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `email_address` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `present_house_no` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `present_street` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `present_barangay` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `present_city` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `present_province` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `present_postal_code` VARCHAR(10) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `permanent_house_no` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `permanent_street` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `permanent_barangay` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `permanent_city` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `permanent_province` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `permanent_postal_code` VARCHAR(10) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `same_as_present` TINYINT(1) DEFAULT 0,
+  `employment_status` ENUM('Employed','Self-Employed','Unemployed','Retired') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `occupation` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `employer_name` VARCHAR(200) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `employer_address` TEXT COLLATE utf8mb4_unicode_ci,
+  `employer_contact` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `monthly_income` DECIMAL(12,2) DEFAULT NULL,
+  `other_income_source` VARCHAR(200) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `other_income_amount` DECIMAL(12,2) DEFAULT NULL,
+  `comaker_name` VARCHAR(150) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_relationship` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_contact` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_income` DECIMAL(12,2) DEFAULT NULL,
+  `comaker_house_no` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_street` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_barangay` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_city` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_province` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_postal_code` VARCHAR(10) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `id_type` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `client_status` ENUM('Active','Inactive','Blacklisted','Deceased') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `blacklist_reason` TEXT COLLATE utf8mb4_unicode_ci,
+  `profile_picture` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `registration_date` DATE NOT NULL,
+  `registered_by` INT DEFAULT NULL,
+  `document_verification_status` ENUM('Unverified','Verified','Approved','Rejected') COLLATE utf8mb4_unicode_ci DEFAULT 'Unverified',
+  `verification_rejection_reason` TEXT COLLATE utf8mb4_unicode_ci,
+  `credit_limit` DECIMAL(15,2) DEFAULT 0.00,
+  `last_seen_credit_limit` DECIMAL(15,2) DEFAULT 0.00,
+  `seen_approval_modal` TINYINT(1) DEFAULT 0,
+  `credit_limit_tier` INT DEFAULT 0,
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`client_id`),
+  UNIQUE KEY `uq_tenant_user` (`tenant_id`, `user_id`),
+  UNIQUE KEY `uq_tenant_clientcode` (`tenant_id`, `client_code`),
+  KEY `user_id` (`user_id`),
+  KEY `registered_by` (`registered_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `clients_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `clients_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `clients_ibfk_3` FOREIGN KEY (`registered_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `document_types`
+-- ---------------------------------------------------
+CREATE TABLE `document_types` (
+  `document_type_id` INT NOT NULL AUTO_INCREMENT,
+  `document_name` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `description` TEXT COLLATE utf8mb4_unicode_ci,
+  `is_required` TINYINT(1) DEFAULT 0,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `loan_purpose` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`document_type_id`),
+  UNIQUE KEY `document_name` (`document_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `loan_products`
+-- ---------------------------------------------------
+CREATE TABLE `loan_products` (
+  `product_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `product_name` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `product_type` ENUM('Personal Loan','Business Loan','Emergency Loan') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` TEXT COLLATE utf8mb4_unicode_ci,
+  `min_amount` DECIMAL(12,2) NOT NULL,
+  `max_amount` DECIMAL(12,2) NOT NULL,
+  `interest_rate` DECIMAL(5,2) NOT NULL,
+  `interest_type` ENUM('Declining Balance','Flat') COLLATE utf8mb4_unicode_ci DEFAULT 'Declining Balance',
+  `min_term_months` INT NOT NULL,
+  `max_term_months` INT NOT NULL,
+  `processing_fee_percentage` DECIMAL(5,2) DEFAULT 0.00,
+  `service_charge` DECIMAL(10,2) DEFAULT 0.00,
+  `documentary_stamp` DECIMAL(10,2) DEFAULT 0.00,
+  `insurance_fee_percentage` DECIMAL(5,2) DEFAULT 0.00,
+  `penalty_rate` DECIMAL(5,2) DEFAULT 0.00,
+  `penalty_type` ENUM('Daily','Monthly','Flat') COLLATE utf8mb4_unicode_ci DEFAULT 'Daily',
+  `grace_period_days` INT DEFAULT 0,
+  `minimum_credit_score` INT DEFAULT 50,
+  `required_documents` TEXT COLLATE utf8mb4_unicode_ci,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`product_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `loan_products_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `loan_applications`
+-- ---------------------------------------------------
+CREATE TABLE `loan_applications` (
+  `application_id` INT NOT NULL AUTO_INCREMENT,
+  `application_number` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `client_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `product_id` INT NOT NULL,
+  `requested_amount` DECIMAL(12,2) NOT NULL,
+  `approved_amount` DECIMAL(12,2) DEFAULT NULL,
+  `loan_term_months` INT NOT NULL,
+  `interest_rate` DECIMAL(5,2) NOT NULL,
+  `loan_purpose` TEXT COLLATE utf8mb4_unicode_ci,
+  `application_data` JSON DEFAULT NULL,
+  `application_status` ENUM('Draft','Submitted','Pending Review','Under Review','Document Verification','Credit Investigation','For Approval','Approved','Rejected','Cancelled','Withdrawn') COLLATE utf8mb4_unicode_ci DEFAULT 'Draft',
+  `submitted_date` DATETIME DEFAULT NULL,
+  `reviewed_by` INT DEFAULT NULL,
+  `review_date` DATETIME DEFAULT NULL,
+  `review_notes` TEXT COLLATE utf8mb4_unicode_ci,
+  `approved_by` INT DEFAULT NULL,
+  `approval_date` DATETIME DEFAULT NULL,
+  `approval_notes` TEXT COLLATE utf8mb4_unicode_ci,
+  `rejected_by` INT DEFAULT NULL,
+  `rejection_date` DATETIME DEFAULT NULL,
+  `rejection_reason` TEXT COLLATE utf8mb4_unicode_ci,
+  `has_comaker` TINYINT(1) DEFAULT 0,
+  `comaker_name` VARCHAR(150) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_relationship` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_contact` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `comaker_address` TEXT COLLATE utf8mb4_unicode_ci,
+  `comaker_income` DECIMAL(12,2) DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`application_id`),
+  UNIQUE KEY `application_number` (`application_number`),
+  KEY `client_id` (`client_id`),
+  KEY `product_id` (`product_id`),
+  KEY `reviewed_by` (`reviewed_by`),
+  KEY `approved_by` (`approved_by`),
+  KEY `rejected_by` (`rejected_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_status` (`application_status`),
+  CONSTRAINT `loan_applications_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`client_id`) ON DELETE CASCADE,
+  CONSTRAINT `loan_applications_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `loan_applications_ibfk_3` FOREIGN KEY (`product_id`) REFERENCES `loan_products` (`product_id`),
+  CONSTRAINT `loan_applications_ibfk_4` FOREIGN KEY (`reviewed_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
+  CONSTRAINT `loan_applications_ibfk_5` FOREIGN KEY (`approved_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
+  CONSTRAINT `loan_applications_ibfk_6` FOREIGN KEY (`rejected_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `loans`
+-- ---------------------------------------------------
+CREATE TABLE `loans` (
+  `loan_id` INT NOT NULL AUTO_INCREMENT,
+  `loan_number` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `application_id` INT NOT NULL,
+  `client_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `product_id` INT NOT NULL,
+  `principal_amount` DECIMAL(12,2) NOT NULL,
+  `interest_amount` DECIMAL(12,2) NOT NULL,
+  `total_loan_amount` DECIMAL(12,2) NOT NULL,
+  `processing_fee` DECIMAL(10,2) DEFAULT 0.00,
+  `service_charge` DECIMAL(10,2) DEFAULT 0.00,
+  `documentary_stamp` DECIMAL(10,2) DEFAULT 0.00,
+  `insurance_fee` DECIMAL(10,2) DEFAULT 0.00,
+  `other_charges` DECIMAL(10,2) DEFAULT 0.00,
+  `total_deductions` DECIMAL(12,2) DEFAULT 0.00,
+  `net_proceeds` DECIMAL(12,2) DEFAULT 0.00,
+  `interest_rate` DECIMAL(5,2) NOT NULL,
+  `loan_term_months` INT NOT NULL,
+  `monthly_amortization` DECIMAL(12,2) NOT NULL,
+  `payment_frequency` ENUM('Daily','Weekly','Bi-Weekly','Monthly') COLLATE utf8mb4_unicode_ci DEFAULT 'Monthly',
+  `number_of_payments` INT NOT NULL,
+  `release_date` DATE NOT NULL,
+  `first_payment_date` DATE NOT NULL,
+  `maturity_date` DATE NOT NULL,
+  `loan_status` ENUM('Active','Fully Paid','Overdue','Restructured','Written Off','Cancelled') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `released_by` INT NOT NULL,
+  `disbursement_method` ENUM('Cash','Check','Bank Transfer','GCash') COLLATE utf8mb4_unicode_ci DEFAULT 'Cash',
+  `disbursement_reference` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `total_paid` DECIMAL(12,2) DEFAULT 0.00,
+  `principal_paid` DECIMAL(12,2) DEFAULT 0.00,
+  `interest_paid` DECIMAL(12,2) DEFAULT 0.00,
+  `penalty_paid` DECIMAL(12,2) DEFAULT 0.00,
+  `remaining_balance` DECIMAL(12,2) DEFAULT NULL,
+  `outstanding_principal` DECIMAL(12,2) DEFAULT NULL,
+  `outstanding_interest` DECIMAL(12,2) DEFAULT NULL,
+  `outstanding_penalty` DECIMAL(12,2) DEFAULT 0.00,
+  `last_payment_date` DATE DEFAULT NULL,
+  `next_payment_due` DATE DEFAULT NULL,
+  `days_overdue` INT DEFAULT 0,
+  `loan_agreement_file` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `promissory_note_file` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `notes` TEXT COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`loan_id`),
+  UNIQUE KEY `loan_number` (`loan_number`),
+  KEY `application_id` (`application_id`),
+  KEY `client_id` (`client_id`),
+  KEY `product_id` (`product_id`),
+  KEY `released_by` (`released_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_tenant_client` (`tenant_id`, `client_id`),
+  KEY `idx_loan_status` (`loan_status`),
+  KEY `idx_next_payment` (`next_payment_due`),
+  CONSTRAINT `loans_ibfk_1` FOREIGN KEY (`application_id`) REFERENCES `loan_applications` (`application_id`),
+  CONSTRAINT `loans_ibfk_2` FOREIGN KEY (`client_id`) REFERENCES `clients` (`client_id`) ON DELETE CASCADE,
+  CONSTRAINT `loans_ibfk_3` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `loans_ibfk_4` FOREIGN KEY (`product_id`) REFERENCES `loan_products` (`product_id`),
+  CONSTRAINT `loans_ibfk_5` FOREIGN KEY (`released_by`) REFERENCES `employees` (`employee_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `amortization_schedule`
+-- ---------------------------------------------------
+CREATE TABLE `amortization_schedule` (
+  `schedule_id` INT NOT NULL AUTO_INCREMENT,
+  `loan_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `payment_number` INT NOT NULL,
+  `due_date` DATE NOT NULL,
+  `beginning_balance` DECIMAL(12,2) NOT NULL,
+  `principal_amount` DECIMAL(12,2) NOT NULL,
+  `interest_amount` DECIMAL(12,2) NOT NULL,
+  `total_payment` DECIMAL(12,2) NOT NULL,
+  `ending_balance` DECIMAL(12,2) NOT NULL,
+  `payment_status` ENUM('Pending','Paid','Overdue','Partially Paid') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
+  `amount_paid` DECIMAL(12,2) DEFAULT 0.00,
+  `payment_date` DATE DEFAULT NULL,
+  `days_late` INT DEFAULT 0,
+  `penalty_amount` DECIMAL(10,2) DEFAULT 0.00,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`schedule_id`),
+  KEY `loan_id` (`loan_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `amortization_schedule_ibfk_1` FOREIGN KEY (`loan_id`) REFERENCES `loans` (`loan_id`) ON DELETE CASCADE,
+  CONSTRAINT `amortization_schedule_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `application_documents`
+-- ---------------------------------------------------
+CREATE TABLE `application_documents` (
+  `app_document_id` INT NOT NULL AUTO_INCREMENT,
+  `application_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `document_type_id` INT NOT NULL,
+  `file_name` VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `file_path` VARCHAR(500) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `upload_date` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`app_document_id`),
+  KEY `application_id` (`application_id`),
+  KEY `document_type_id` (`document_type_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `application_documents_ibfk_1` FOREIGN KEY (`application_id`) REFERENCES `loan_applications` (`application_id`) ON DELETE CASCADE,
+  CONSTRAINT `application_documents_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `application_documents_ibfk_3` FOREIGN KEY (`document_type_id`) REFERENCES `document_types` (`document_type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `audit_logs`
+-- ---------------------------------------------------
+CREATE TABLE `audit_logs` (
+  `log_id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT DEFAULT NULL,
+  `tenant_id` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `action_type` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `entity_type` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `entity_id` INT DEFAULT NULL,
+  `description` TEXT COLLATE utf8mb4_unicode_ci,
+  `ip_address` VARCHAR(45) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`log_id`),
+  KEY `user_id` (`user_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_action_type` (`action_type`),
+  KEY `idx_tenant_date` (`tenant_id`, `created_at`),
+  CONSTRAINT `audit_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  CONSTRAINT `audit_logs_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `backup_logs`
+-- ---------------------------------------------------
+CREATE TABLE `backup_logs` (
+  `log_id` INT NOT NULL AUTO_INCREMENT,
+  `initiated_by` INT DEFAULT NULL,
+  `backup_type` ENUM('full','tenant') DEFAULT 'full',
+  `file_name` VARCHAR(255) DEFAULT NULL,
+  `file_size_bytes` BIGINT DEFAULT 0,
+  `tenant_id` VARCHAR(50) DEFAULT NULL,
+  `status` ENUM('Success','Failed') DEFAULT 'Success',
+  `error_message` TEXT,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`log_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `chat_messages`
+-- ---------------------------------------------------
+CREATE TABLE `chat_messages` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `sender_id` INT NOT NULL,
+  `receiver_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `message` TEXT NOT NULL COLLATE utf8mb4_unicode_ci,
+  `is_read` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `sender_id` (`sender_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `chat_messages_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `chat_messages_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `client_documents`
+-- ---------------------------------------------------
+CREATE TABLE `client_documents` (
+  `client_document_id` INT NOT NULL AUTO_INCREMENT,
+  `client_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `document_type_id` INT NOT NULL,
+  `file_name` VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `file_path` VARCHAR(500) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `upload_date` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `document_number` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `file_size` INT DEFAULT NULL,
+  `file_type` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `verified_by` INT DEFAULT NULL,
+  `verification_date` DATETIME DEFAULT NULL,
+  `verification_status` ENUM('Pending','Verified','Rejected','Expired') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
+  `verification_notes` TEXT COLLATE utf8mb4_unicode_ci,
+  `expiry_date` DATE DEFAULT NULL,
+  `is_active` TINYINT(1) DEFAULT 1,
+  PRIMARY KEY (`client_document_id`),
+  KEY `client_id` (`client_id`),
+  KEY `document_type_id` (`document_type_id`),
+  KEY `verified_by` (`verified_by`),
+  KEY `idx_tenant_client` (`tenant_id`, `client_id`),
+  CONSTRAINT `client_documents_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`client_id`) ON DELETE CASCADE,
+  CONSTRAINT `client_documents_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `client_documents_ibfk_3` FOREIGN KEY (`document_type_id`) REFERENCES `document_types` (`document_type_id`),
+  CONSTRAINT `client_documents_ibfk_4` FOREIGN KEY (`verified_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `credit_investigations`
+-- ---------------------------------------------------
+CREATE TABLE `credit_investigations` (
+  `ci_id` INT NOT NULL AUTO_INCREMENT,
+  `client_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `conducted_by` INT NOT NULL,
+  `investigation_date` DATE NOT NULL,
+  `business_exists` TINYINT(1) DEFAULT NULL,
+  `business_location_verified` TINYINT(1) DEFAULT NULL,
+  `business_operational` TINYINT(1) DEFAULT NULL,
+  `business_notes` TEXT COLLATE utf8mb4_unicode_ci,
+  `character_rating` ENUM('Excellent','Good','Fair','Poor') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `reputation_notes` TEXT COLLATE utf8mb4_unicode_ci,
+  `income_verified` TINYINT(1) DEFAULT NULL,
+  `assets_verified` TINYINT(1) DEFAULT NULL,
+  `existing_obligations` TEXT COLLATE utf8mb4_unicode_ci,
+  `references_contacted` TINYINT(1) DEFAULT NULL,
+  `references_feedback` TEXT COLLATE utf8mb4_unicode_ci,
+  `recommendation` ENUM('Highly Recommended','Recommended','Conditional','Not Recommended') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `investigation_remarks` TEXT COLLATE utf8mb4_unicode_ci,
+  `ci_report_file` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `status` ENUM('Pending','Completed','Cancelled') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
+  `completed_at` DATETIME DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`ci_id`),
+  KEY `client_id` (`client_id`),
+  KEY `conducted_by` (`conducted_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `credit_investigations_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`client_id`) ON DELETE CASCADE,
+  CONSTRAINT `credit_investigations_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `credit_investigations_ibfk_3` FOREIGN KEY (`conducted_by`) REFERENCES `employees` (`employee_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `credit_scores`
+-- ---------------------------------------------------
+CREATE TABLE `credit_scores` (
+  `score_id` INT NOT NULL AUTO_INCREMENT,
+  `client_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `ci_id` INT DEFAULT NULL,
+  `income_score` INT DEFAULT 0,
+  `employment_score` INT DEFAULT 0,
+  `credit_history_score` INT DEFAULT 0,
+  `collateral_score` INT DEFAULT 0,
+  `character_score` INT DEFAULT 0,
+  `business_score` INT DEFAULT 0,
+  `total_score` INT DEFAULT 0,
+  `credit_rating` ENUM('Excellent','Good','Fair','Poor','High Risk') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `max_loan_amount` DECIMAL(12,2) DEFAULT NULL,
+  `recommended_interest_rate` DECIMAL(5,2) DEFAULT NULL,
+  `computed_by` INT DEFAULT NULL,
+  `computation_date` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `notes` TEXT COLLATE utf8mb4_unicode_ci,
+  PRIMARY KEY (`score_id`),
+  KEY `client_id` (`client_id`),
+  KEY `ci_id` (`ci_id`),
+  KEY `computed_by` (`computed_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `credit_scores_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`client_id`) ON DELETE CASCADE,
+  CONSTRAINT `credit_scores_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `credit_scores_ibfk_3` FOREIGN KEY (`ci_id`) REFERENCES `credit_investigations` (`ci_id`) ON DELETE SET NULL,
+  CONSTRAINT `credit_scores_ibfk_4` FOREIGN KEY (`computed_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `notifications`
+-- ---------------------------------------------------
+CREATE TABLE `notifications` (
+  `notification_id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `notification_type` ENUM('Payment Due','Payment Received','Loan Approved','Loan Rejected','Document Required','Appointment Reminder','Message Received','System Alert','General') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `title` VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `message` TEXT NOT NULL COLLATE utf8mb4_unicode_ci,
+  `link` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `is_read` TINYINT(1) DEFAULT 0,
+  `read_at` DATETIME DEFAULT NULL,
+  `priority` ENUM('Low','Medium','High') COLLATE utf8mb4_unicode_ci DEFAULT 'Medium',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`notification_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_user_read` (`user_id`, `is_read`),
+  CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `notifications_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `otp_verifications`
+-- ---------------------------------------------------
+CREATE TABLE `otp_verifications` (
+  `otp_id` INT NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `otp_code` VARCHAR(10) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `status` ENUM('Pending','Verified','Expired') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
+  `expires_at` DATETIME NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`otp_id`),
+  KEY `idx_email_status` (`email`, `status`),
+  KEY `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `payment_transactions`
+-- ---------------------------------------------------
+CREATE TABLE `payment_transactions` (
+  `transaction_id` INT NOT NULL AUTO_INCREMENT,
+  `transaction_ref` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `client_id` INT NOT NULL,
+  `loan_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `source_id` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci COMMENT 'Payment gateway source ID',
+  `amount` DECIMAL(12,2) NOT NULL,
+  `payment_method` ENUM('PayMongo','GCash','Cash','Bank Transfer','Check') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `payment_type` ENUM('regular','early_settlement') COLLATE utf8mb4_unicode_ci DEFAULT 'regular',
+  `status` ENUM('pending','completed','failed','cancelled') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+  `payment_date` DATETIME DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`transaction_id`),
+  UNIQUE KEY `transaction_ref` (`transaction_ref`),
+  KEY `idx_transaction_ref` (`transaction_ref`),
+  KEY `idx_client_loan` (`client_id`, `loan_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `payment_transactions_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `payments`
+-- ---------------------------------------------------
+CREATE TABLE `payments` (
+  `payment_id` INT NOT NULL AUTO_INCREMENT,
+  `payment_reference` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `loan_id` INT NOT NULL,
+  `client_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `payment_date` DATE NOT NULL,
+  `payment_amount` DECIMAL(12,2) NOT NULL,
+  `principal_paid` DECIMAL(12,2) NOT NULL,
+  `interest_paid` DECIMAL(12,2) NOT NULL,
+  `penalty_paid` DECIMAL(12,2) DEFAULT 0.00,
+  `advance_payment` DECIMAL(12,2) DEFAULT 0.00,
+  `payment_method` ENUM('Cash','Check','Bank Transfer','GCash','Online Payment') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `payment_reference_number` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `bank_name` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `check_number` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `check_date` DATE DEFAULT NULL,
+  `official_receipt_number` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `receipt_file` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `received_by` INT NOT NULL,
+  `posted_by` INT DEFAULT NULL,
+  `posted_date` DATETIME DEFAULT NULL,
+  `payment_status` ENUM('Pending','Posted','Verified','Cancelled','Bounced') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
+  `remarks` TEXT COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`payment_id`),
+  UNIQUE KEY `payment_reference` (`payment_reference`),
+  KEY `loan_id` (`loan_id`),
+  KEY `client_id` (`client_id`),
+  KEY `received_by` (`received_by`),
+  KEY `posted_by` (`posted_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_tenant_client` (`tenant_id`, `client_id`),
+  KEY `idx_payment_status` (`payment_status`),
+  CONSTRAINT `payments_ibfk_1` FOREIGN KEY (`loan_id`) REFERENCES `loans` (`loan_id`) ON DELETE CASCADE,
+  CONSTRAINT `payments_ibfk_2` FOREIGN KEY (`client_id`) REFERENCES `clients` (`client_id`),
+  CONSTRAINT `payments_ibfk_3` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `payments_ibfk_4` FOREIGN KEY (`received_by`) REFERENCES `employees` (`employee_id`),
+  CONSTRAINT `payments_ibfk_5` FOREIGN KEY (`posted_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `role_permissions`
+-- ---------------------------------------------------
+CREATE TABLE `role_permissions` (
+  `role_id` INT NOT NULL,
+  `permission_id` INT NOT NULL,
+  `assigned_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`role_id`, `permission_id`),
+  KEY `permission_id` (`permission_id`),
+  CONSTRAINT `role_permissions_ibfk_1` FOREIGN KEY (`role_id`) REFERENCES `user_roles` (`role_id`) ON DELETE CASCADE,
+  CONSTRAINT `role_permissions_ibfk_2` FOREIGN KEY (`permission_id`) REFERENCES `permissions` (`permission_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `system_settings`
+-- ---------------------------------------------------
+CREATE TABLE `system_settings` (
+  `setting_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `setting_key` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `setting_value` TEXT COLLATE utf8mb4_unicode_ci,
+  `setting_category` VARCHAR(50) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `description` TEXT COLLATE utf8mb4_unicode_ci,
+  `data_type` ENUM('String','Number','Boolean','JSON') COLLATE utf8mb4_unicode_ci DEFAULT 'String',
+  `is_editable` TINYINT(1) DEFAULT 1,
+  `updated_by` INT DEFAULT NULL,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`setting_id`),
+  UNIQUE KEY `uq_tenant_key` (`tenant_id`, `setting_key`),
+  KEY `updated_by` (`updated_by`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `system_settings_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`),
+  CONSTRAINT `system_settings_ibfk_2` FOREIGN KEY (`updated_by`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `tenant_billing_invoices`
+-- ---------------------------------------------------
+CREATE TABLE `tenant_billing_invoices` (
+  `invoice_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `invoice_number` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `amount` DECIMAL(10,2) NOT NULL,
+  `billing_period_start` DATE NOT NULL,
+  `billing_period_end` DATE NOT NULL,
+  `due_date` DATE NOT NULL,
+  `status` ENUM('Draft','Open','Paid','Void','Uncollectible') COLLATE utf8mb4_unicode_ci DEFAULT 'Open',
+  `stripe_invoice_id` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `pdf_url` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `paid_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`invoice_id`),
+  UNIQUE KEY `invoice_number` (`invoice_number`),
+  KEY `idx_tenant_status_due` (`tenant_id`, `status`, `due_date`),
+  CONSTRAINT `tenant_billing_invoices_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `tenant_billing_payment_methods`
+-- ---------------------------------------------------
+CREATE TABLE `tenant_billing_payment_methods` (
+  `method_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `last_four_digits` VARCHAR(4) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `card_brand` VARCHAR(20) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `cardholder_name` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `exp_month` INT NOT NULL,
+  `exp_year` INT NOT NULL,
+  `card_number_encrypted` VARBINARY(255) NOT NULL COMMENT 'AES-256 encrypted full card number',
+  `is_default` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`method_id`),
+  KEY `tenant_id` (`tenant_id`),
+  CONSTRAINT `tenant_billing_payment_methods_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `tenant_branding`
+-- ---------------------------------------------------
+CREATE TABLE `tenant_branding` (
+  `branding_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `logo_path` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `font_family` VARCHAR(50) DEFAULT 'Inter' COLLATE utf8mb4_unicode_ci,
+  `theme_primary_color` VARCHAR(10) DEFAULT '#dc2626' COLLATE utf8mb4_unicode_ci,
+  `theme_secondary_color` VARCHAR(10) DEFAULT '#991b1b' COLLATE utf8mb4_unicode_ci,
+  `theme_text_main` VARCHAR(10) DEFAULT '#0f172a' COLLATE utf8mb4_unicode_ci,
+  `theme_text_muted` VARCHAR(10) DEFAULT '#64748b' COLLATE utf8mb4_unicode_ci,
+  `theme_bg_body` VARCHAR(10) DEFAULT '#f8fafc' COLLATE utf8mb4_unicode_ci,
+  `theme_bg_card` VARCHAR(10) DEFAULT '#ffffff' COLLATE utf8mb4_unicode_ci,
+  `theme_border_color` VARCHAR(10) DEFAULT '#e2e8f0' COLLATE utf8mb4_unicode_ci,
+  `card_border_width` TINYINT DEFAULT 1,
+  `card_shadow` VARCHAR(10) DEFAULT 'sm' COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`branding_id`),
+  UNIQUE KEY `tenant_id` (`tenant_id`),
+  CONSTRAINT `tenant_branding_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `tenant_feature_toggles`
+-- ---------------------------------------------------
+CREATE TABLE `tenant_feature_toggles` (
+  `toggle_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `toggle_key` VARCHAR(100) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `is_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`toggle_id`),
+  UNIQUE KEY `uq_tenant_toggle` (`tenant_id`, `toggle_key`),
+  CONSTRAINT `tenant_feature_toggles_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `tenant_legitimacy_documents`
+-- ---------------------------------------------------
+CREATE TABLE `tenant_legitimacy_documents` (
+  `document_id` INT NOT NULL AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `original_file_name` VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `file_path` VARCHAR(500) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `uploaded_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`document_id`),
+  KEY `idx_tenant` (`tenant_id`),
+  CONSTRAINT `tenant_legitimacy_documents_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `tenant_website_content`
+-- ---------------------------------------------------
+CREATE TABLE `tenant_website_content` (
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `layout_template` ENUM('template1','template2','template3') COLLATE utf8mb4_unicode_ci DEFAULT 'template1',
+  `hero_title` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `hero_subtitle` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `hero_description` TEXT COLLATE utf8mb4_unicode_ci,
+  `hero_cta_text` VARCHAR(100) DEFAULT 'Learn More' COLLATE utf8mb4_unicode_ci,
+  `hero_cta_url` VARCHAR(255) DEFAULT '#about' COLLATE utf8mb4_unicode_ci,
+  `hero_image_path` VARCHAR(500) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `hero_badge_text` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `about_heading` VARCHAR(255) DEFAULT 'About Us' COLLATE utf8mb4_unicode_ci,
+  `about_body` TEXT COLLATE utf8mb4_unicode_ci,
+  `about_image_path` VARCHAR(500) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `services_heading` VARCHAR(255) DEFAULT 'Our Services' COLLATE utf8mb4_unicode_ci,
+  `services_json` LONGTEXT COLLATE utf8mb4_unicode_ci COMMENT 'JSON array of service cards',
+  `stats_json` LONGTEXT COLLATE utf8mb4_unicode_ci,
+  `stats_heading` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `stats_subheading` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `stats_image_path` VARCHAR(500) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `contact_address` TEXT COLLATE utf8mb4_unicode_ci,
+  `contact_phone` VARCHAR(100) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `contact_email` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `contact_hours` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `footer_description` TEXT COLLATE utf8mb4_unicode_ci,
+  `custom_css` LONGTEXT COLLATE utf8mb4_unicode_ci,
+  `meta_description` VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`tenant_id`),
+  CONSTRAINT `tenant_website_content_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------
+-- Table: `user_sessions`
+-- ---------------------------------------------------
+CREATE TABLE `user_sessions` (
+  `session_id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `tenant_id` VARCHAR(50) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `session_token` VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci,
+  `ip_address` VARCHAR(45) DEFAULT NULL COLLATE utf8mb4_unicode_ci,
+  `user_agent` TEXT COLLATE utf8mb4_unicode_ci,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` DATETIME NOT NULL,
+  PRIMARY KEY (`session_id`),
+  UNIQUE KEY `session_token` (`session_token`),
+  KEY `user_id` (`user_id`),
+  KEY `tenant_id` (`tenant_id`),
+  KEY `idx_expires_at` (`expires_at`),
+  CONSTRAINT `user_sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `user_sessions_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+SET FOREIGN_KEY_CHECKS = 1;
+-- END OF SCHEMA
+-- =====================================================
+
+
+
+-- 1. Create the platform-level Super Admin role
+INSERT INTO user_roles (tenant_id, role_name, role_description, is_system_role) 
+VALUES (NULL, 'Super Admin', 'Master Platform Administrator', TRUE);
+
+-- 2. Create the 'rhob' admin account
+-- The password_hash below is a generated Bcrypt hash for "1234"
+INSERT INTO users (
+    tenant_id, 
+    username, 
+    email, 
+    password_hash, 
+    role_id, 
+    user_type, 
+    status
+) VALUES (
+    NULL, 
+    'rhob', 
+    'rhob@microfin.com', 
+    '$2y$10$WAX5NHe0AGODm6k2skpJT.DrLQHrvwsmEofIb8LBN93x/gtuVYv5a', 
+    (SELECT role_id FROM user_roles WHERE role_name = 'Super Admin' AND tenant_id IS NULL LIMIT 1), 
+    'Super Admin', 
+    'Active'
+);
+-- ============================================================
+-- END OF SCHEMA
+-- ============================================================
+
+
+
+INSERT INTO document_types (document_name, description, is_required, loan_purpose) VALUES
+('Valid ID Front', 'Front side of government-issued ID', TRUE, NULL),
+('Valid ID Back', 'Back side of government-issued ID', TRUE, NULL),
+('Proof of Income', 'Latest payslip, ITR, or bank statement', TRUE, NULL),
+('Proof of Billing', 'Upload proof of address (utility bill, barangay certificate, etc.)', TRUE, NULL),
+('Proof of Legitimacy Document', 'Any valid proof of legitimacy such as business permit, DTI, or SEC registration', TRUE, 'Business'),
+('Business Financial Statements', 'Latest financial statements or income records', TRUE, 'Business'),
+('Business Plan', 'Business plan or proposal (for new businesses)', FALSE, 'Business'),
+('School Enrollment Certificate', 'Certificate of enrollment or admission letter', TRUE, 'Education'),
+('School ID', 'Valid school ID', TRUE, 'Education'),
+('Tuition Fee Assessment', 'Official assessment of tuition and fees', TRUE, 'Education'),
+('Land Title/Lease Agreement', 'Proof of land ownership or lease', TRUE, 'Agricultural'),
+('Farm Plan', 'Detailed farm plan or proposal', TRUE, 'Agricultural'),
+('Medical Certificate', 'Medical certificate or hospital bill', TRUE, 'Medical'),
+('Prescription/Treatment Plan', 'Doctor''s prescription or treatment plan', FALSE, 'Medical'),
+('Property Documents', 'Land title, tax declaration, or contract to sell', TRUE, 'Housing'),
+('Construction Estimate', 'Detailed construction estimate or quotation', TRUE, 'Housing'),
+('DTI/SEC Registration', 'Business registration documents', FALSE, 'Business'),
+('Barangay Clearance', 'Clearance from local barangay', FALSE, NULL),
+('Marriage Certificate', 'For married applicants', FALSE, NULL),
+('Birth Certificate', 'Birth certificate copy', FALSE, NULL);
+
+
+
+
+-- Seed system permissions
+INSERT INTO permissions (permission_code, module, description) VALUES
+('VIEW_USERS', 'Users', 'Can view the list of users and employees'),
+('CREATE_USERS', 'Users', 'Can create new users and invite employees'),
+('MANAGE_ROLES', 'Roles', 'Can create custom roles and assign permissions'),
+('VIEW_CLIENTS', 'Clients', 'Can view client profiles and history'),
+('CREATE_CLIENTS', 'Clients', 'Can register new clients'),
+('VIEW_LOANS', 'Loans', 'Can view loan applications and active loans'),
+('CREATE_LOANS', 'Loans', 'Can draft new loan applications'),
+('APPROVE_LOANS', 'Loans', 'Can approve or reject CONSIDER loans'),
+('PROCESS_PAYMENTS', 'Payments', 'Can receive and post loan payments'),
+('VIEW_REPORTS', 'Reports', 'Can generate and view financial reports'),
+('VIEW_APPLICATIONS', 'Applications', 'Can view CONSIDER loan applications'),
+('MANAGE_APPLICATIONS', 'Applications', 'Can approve, reject, or process CONSIDER loan applications');
+
+
+
+// Add purpose_category column if missing
+$checks = [
+    "purpose_category" => "ALTER TABLE loan_applications ADD COLUMN purpose_category VARCHAR(100) DEFAULT '' AFTER interest_rate",
+    "application_data"  => "ALTER TABLE loan_applications ADD COLUMN application_data TEXT AFTER loan_purpose",
+    "has_comaker"       => "ALTER TABLE loan_applications ADD COLUMN has_comaker TINYINT(1) DEFAULT 0 AFTER application_status",
+    "comaker_name"      => "ALTER TABLE loan_applications ADD COLUMN comaker_name VARCHAR(150) DEFAULT NULL AFTER has_comaker",
+    "comaker_relationship" => "ALTER TABLE loan_applications ADD COLUMN comaker_relationship VARCHAR(100) DEFAULT NULL AFTER comaker_name",
+    "comaker_contact"   => "ALTER TABLE loan_applications ADD COLUMN comaker_contact VARCHAR(30) DEFAULT NULL AFTER comaker_relationship",
+    "comaker_address"   => "ALTER TABLE loan_applications ADD COLUMN comaker_address TEXT DEFAULT NULL AFTER comaker_contact",
+    "comaker_income"    => "ALTER TABLE loan_applications ADD COLUMN comaker_income DECIMAL(15,2) DEFAULT 0 AFTER comaker_address",
+];
+
+
+ALTER TABLE payment_transactions ADD COLUMN user_id INT AFTER client_id");
+$conn->query("ALTER TABLE payment_transactions ADD COLUMN tenant_id VARCHAR(50) AFTER user_id");
+
+
+<?php
+require 'db.php';
+$conn->query("ALTER TABLE payment_transactions MODIFY COLUMN client_id INT NULL");
+$conn->query("ALTER TABLE payment_transactions MODIFY COLUMN user_id INT NULL");
+$conn->query("ALTER TABLE payment_transactions MODIFY COLUMN tenant_id VARCHAR(50) NULL");
+$conn->query("ALTER TABLE payment_transactions MODIFY COLUMN amount DECIMAL(15,2) NOT NULL DEFAULT 0.00");
+$conn->query("ALTER TABLE payment_transactions MODIFY COLUMN payment_method VARCHAR(50) NULL");
+echo "Modified columns successfully. Error: " . $conn->error . "\n";
+
+
+
+mysql -u root -e "USE microfin_db; ALTER TABLE payments MODIFY COLUMN received_by INT NULL DEFAULT NULL;"

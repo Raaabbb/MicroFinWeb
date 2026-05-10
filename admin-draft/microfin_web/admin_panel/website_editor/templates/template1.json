@@ -1,0 +1,35 @@
+{
+    "name": "Classic Corporate",
+    "sections": [
+        {
+            "id": "services",
+            "label": "Show Services",
+            "target": "sec_services",
+            "default_state": true
+        },
+        {
+            "id": "calculator",
+            "label": "Show Loan Calculator",
+            "target": "sec_calc",
+            "default_state": true
+        },
+        {
+            "id": "stats",
+            "label": "Show Impact Stats",
+            "target": "sec_stats",
+            "default_state": true
+        },
+        {
+            "id": "about",
+            "label": "Show About Section",
+            "target": "sec_about",
+            "default_state": true
+        },
+        {
+            "id": "download",
+            "label": "Show App Download",
+            "target": "sec_download",
+            "default_state": true
+        }
+    ]
+}

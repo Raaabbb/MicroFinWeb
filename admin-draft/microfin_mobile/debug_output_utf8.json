@@ -1,0 +1,306 @@
+Response from API (Tenant 1):
+{
+    "success": true,
+    "policy": {
+        "credit_limits": {
+            "scoring_setup": {
+                "core": {
+                    "starting_credit_score": 320,
+                    "repayment_score_bonus": 10,
+                    "late_payment_score_penalty": 15
+                },
+                "detailed_rules": {
+                    "upgrade": {
+                        "successful_repayment_cycles": {
+                            "enabled": true,
+                            "required_cycles": 3,
+                            "score_points": 5
+                        },
+                        "maximum_late_payments_review": {
+                            "enabled": true,
+                            "maximum_allowed": 1,
+                            "review_period_days": 90,
+                            "score_points": 5
+                        },
+                        "no_active_overdue": {
+                            "enabled": true,
+                            "review_period_days": 0,
+                            "score_points": 5
+                        }
+                    },
+                    "downgrade": {
+                        "late_payments_review": {
+                            "enabled": true,
+                            "trigger_count": 2,
+                            "review_period_days": 90,
+                            "score_points": 12
+                        },
+                        "overdue_days_threshold": {
+                            "enabled": true,
+                            "days": 15,
+                            "score_points": 25
+                        }
+                    }
+                }
+            },
+            "score_bands": {
+                "rows": [
+                    {
+                        "id": "band_at_risk",
+                        "label": "At-Risk",
+                        "min_score": 50,
+                        "max_score": 249,
+                        "base_growth_percent": 1,
+                        "micro_percent_per_point": 0.02
+                    },
+                    {
+                        "id": "band_entry",
+                        "label": "Entry",
+                        "min_score": 250,
+                        "max_score": 449,
+                        "base_growth_percent": 5,
+                        "micro_percent_per_point": 0.034
+                    },
+                    {
+                        "id": "band_standard",
+                        "label": "Standard",
+                        "min_score": 450,
+                        "max_score": 649,
+                        "base_growth_percent": 10,
+                        "micro_percent_per_point": 0.025
+                    },
+                    {
+                        "id": "band_plus",
+                        "label": "Plus",
+                        "min_score": 650,
+                        "max_score": 849,
+                        "base_growth_percent": 15,
+                        "micro_percent_per_point": 0.02
+                    },
+                    {
+                        "id": "band_premium",
+                        "label": "Premium",
+                        "min_score": 850,
+                        "max_score": null,
+                        "base_growth_percent": 18,
+                        "micro_percent_per_point": 0.01
+                    }
+                ]
+            },
+            "limit_assignment": {
+                "initial_limit_percent_of_income": 40,
+                "use_default_lending_cap": false,
+                "default_lending_cap_amount": 0,
+                "apply_score_changes_immediately": true
+            }
+        },
+        "decision_rules": {
+            "workflow": {
+                "approval_mode": "semi_automatic"
+            },
+            "decision_rules": {
+                "demographics": {
+                    "age_enabled": true,
+                    "min_age": 21,
+                    "max_age": 65,
+                    "employment_tenure_enabled": false,
+                    "min_employment_months": 6,
+                    "residency_tenure_enabled": false,
+                    "min_residency_months": 6,
+                    "employment_status_enabled": true,
+                    "eligible_statuses": [
+                        "full_time",
+                        "part_time",
+                        "contract",
+                        "freelancer",
+                        "self_employed",
+                        "casual",
+                        "retired",
+                        "student",
+                        "unemployed"
+                    ]
+                },
+                "affordability": {
+                    "income_enabled": false,
+                    "min_monthly_income": 10000,
+                    "dti_enabled": false,
+                    "max_dti_percentage": 45,
+                    "pti_enabled": false,
+                    "max_pti_percentage": 20
+                },
+                "guardrails": {
+                    "score_thresholds_enabled": true,
+                    "auto_reject_floor": 50,
+                    "hard_approval_threshold": 850,
+                    "cooling_period_enabled": false,
+                    "rejected_cooling_days": 30
+                },
+                "exposure": {
+                    "multiple_active_loans_enabled": true,
+                    "guarantor_required_enabled": false,
+                    "guarantor_required_above_amount": null,
+                    "collateral_required_enabled": false,
+                    "collateral_required_above_amount": null
+                },
+                "score_thresholds": {
+                    "auto_reject_floor": 50,
+                    "hard_approval_threshold": 850
+                },
+                "loan_capital": {
+                    "minimum_capital_requirement": 10000
+                },
+                "borrowing_access_rules": {
+                    "allow_multiple_active_loans_within_remaining_limit": true
+                },
+                "demographic_guardrails": {
+                    "min_age": 21,
+                    "max_age": 65
+                }
+            }
+        },
+        "compliance_documents": {
+            "document_requirements": [
+                {
+                    "category_key": "identity_document",
+                    "label": "Identity Document",
+                    "requirement": "required",
+                    "accepted_document_names": [
+                        "Valid ID Front",
+                        "Valid ID Back",
+                        "National ID (PhilID\/ePhilID)",
+                        "Passport",
+                        "Driver's License",
+                        "UMID",
+                        "SSS ID",
+                        "GSIS e-Card",
+                        "PRC ID",
+                        "Postal ID",
+                        "Seaman's Book \/ SIRB",
+                        "Senior Citizen ID",
+                        "PWD ID",
+                        "Voter's ID",
+                        "NBI Clearance",
+                        "Police Clearance",
+                        "TIN ID",
+                        "School ID",
+                        "Company ID",
+                        "Barangay ID",
+                        "OFW ID",
+                        "OWWA ID",
+                        "IBP ID",
+                        "Government Office \/ GOCC ID"
+                    ],
+                    "document_options": [
+                        {
+                            "document_name": "Valid ID Front",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Valid ID Back",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "National ID (PhilID\/ePhilID)",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Passport",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Driver's License",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "UMID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "SSS ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "GSIS e-Card",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "PRC ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Postal ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Seaman's Book \/ SIRB",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Senior Citizen ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "PWD ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Voter's ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "NBI Clearance",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Police Clearance",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "TIN ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "School ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Company ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Barangay ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "OFW ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "OWWA ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "IBP ID",
+                            "is_accepted": true
+                        },
+                        {
+                            "document_name": "Government Office \/ GOCC ID",
+                            "is_accepted": true
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "allowed_employment_statuses": [
+        "full_time",
+        "part_time",
+        "contract",
+        "freelancer",
+        "self_employed",
+        "casual",
+        "retired",
+        "student",
+        "unemployed"
+    ]
+}

@@ -1,0 +1,1454 @@
+-- ============================================================
+-- FUNDLINE MULTI-TENANT DATABASE SCHEMA
+-- Version 3.1 - Revised with Tenant-Scoped App Flow
+-- Generated: 2026-03-11 | Revised: 2026-03-19
+-- ============================================================
+-- SHARED APP REVISION:
+--   One shared company-branded APK is now the only supported mobile app.
+--   Tenant context must be resolved at runtime through referral code or QR.
+--   Canonical mobile login format is username@tenant_slug.
+--   Real email remains separate for verification, notifications, and recovery.
+-- This schema supports multi-tenant microfinancing:
+--   Example Tenants: Fundline (Marilao), PlaridelMicroFin, Sacred Heart Coop
+-- ============================================================
+-- GUIDE:
+--   ✅ Approved  = Discussed and agreed upon, ready to implement
+--   ⚠ Pending    = Needs approval before implementing
+--   🔒 SECURITY  = Security-related decision
+--   📝 NOTE      = Context or explanation
+-- ============================================================
+
+-- DROP DATABASE microfin_db;
+CREATE DATABASE IF NOT EXISTS microfin_db;
+USE microfin_db;
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY A: TENANT MANAGEMENT
+--   Tables: tenants, tenant_branding, tenant_legitimacy_documents
+-- ************************************************************
+-- ************************************************************
+
+-- ============================================================
+-- TABLE A1: tenants (Master tenant registry)
+-- ============================================================
+-- PURPOSE: Core multi-tenant registry. Each row = one customer organization.
+--
+-- ✅ Approved: Soft-delete with deleted_at, deleted_by, deletion_reason
+-- ✅ Approved: 30-day auto-purge after soft delete (via PHP cron, not MySQL Event)
+-- ✅ Approved: Track tenant status changes via audit_logs (application-level PHP, not triggers)
+-- ✅ Approved: Branding fields moved to tenant_branding table (TABLE A2)
+-- ✅ Approved: Proof of legitimacy uploads moved to tenant_legitimacy_documents (TABLE A3)
+-- ✅ Approved: setup_token removed — just use slug for tenant access
+-- ✅ Approved: tenant_id is system-generated immutable 10-character alphanumeric identifier (tenant_slug remains editable)
+-- ✅ Approved: Added request_type to separate Tenant Application vs Talk to an Expert flows
+--
+-- STATUS FLOW:
+--   tenant_application: Pending → Active/Suspended/Rejected
+--   talk_to_expert: New → In Contact → Closed
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenants (
+    tenant_id VARCHAR(50) PRIMARY KEY COMMENT 'System-generated immutable tenant identifier (10-char alphanumeric in app logic)',
+    tenant_name VARCHAR(100) NOT NULL,
+    tenant_slug VARCHAR(50) UNIQUE COMMENT 'URL-safe identifier e.g. fundline, plaridel, sacredheart',
+
+    -- Demo & Onboarding
+    estimated_loans VARCHAR(50) COMMENT 'Used during Demo Request phase',
+    onboarding_deadline DATETIME COMMENT '30 days after being Accepted, or else goes to Draft',
+
+    -- Company Info (personal contact details are stored in users)
+    company_address TEXT,
+
+    -- Plan & Limits
+    plan_tier VARCHAR(250) DEFAULT 'Starter',
+    max_clients INT DEFAULT 1000 COMMENT '1000=Starter, 5000=Pro, 10000=Enterprise, -1=Unlimited',
+    max_users INT DEFAULT 250 COMMENT '250=Starter, 2000=Pro, 5000=Enterprise, -1=Unlimited',
+    storage_limit_gb DECIMAL(5,2) DEFAULT 5.00,
+    modules_enabled JSON,
+    mrr DECIMAL(10,2) DEFAULT 0.00,
+
+    -- Onboarding
+    setup_completed BOOLEAN DEFAULT FALSE COMMENT 'Tracks if first-time wizard is done',
+    setup_current_step INT DEFAULT 0 COMMENT 'Onboarding step: 0=password, 1=loan products, 2=credit config, 3=website, 4=branding, 5=billing, 6=done',
+
+    -- Status
+    status ENUM('Pending', 'Active', 'Suspended', 'Rejected', 'New', 'In Contact', 'Closed')
+           DEFAULT 'Pending',
+
+    -- Intake Flow Tracking
+    request_type ENUM('tenant_application', 'talk_to_expert')
+        NOT NULL DEFAULT 'tenant_application'
+        COMMENT 'Entry flow from public website: full application vs expert consultation',
+    assigned_expert_user_id INT NULL
+        COMMENT 'Optional owner of talk_to_expert follow-up (maps to users.user_id in app logic)',
+
+    -- ✅ Approved: Soft delete columns
+    deleted_at TIMESTAMP NULL COMMENT 'Soft delete timestamp, NULL = active',
+    deleted_by INT NULL COMMENT 'User ID who initiated deletion',
+    deletion_reason TEXT COMMENT 'Why this tenant was deleted/archived',
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    -- Indexes
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at),
+    INDEX idx_request_type_status (request_type, status),
+    INDEX idx_request_type_created_at (request_type, created_at),
+    INDEX idx_assigned_expert_user (assigned_expert_user_id)
+);
+
+-- ============================================================
+-- TABLE A2: tenant_branding (Tenant Visual Identity)
+-- ============================================================
+-- PURPOSE: Per-tenant editable design/branding without cluttering tenants table.
+-- ✅ Approved: Separated from tenants table for cleaner architecture.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_branding (
+    branding_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NOT NULL UNIQUE,
+    logo_path VARCHAR(255) COMMENT 'Relative path to logo image',
+    font_family VARCHAR(50) DEFAULT 'Inter' COMMENT 'Google Font name e.g. Inter, Poppins, Outfit',
+    theme_primary_color VARCHAR(10) DEFAULT '#dc2626' COMMENT 'Hex color code',
+    theme_secondary_color VARCHAR(10) DEFAULT '#991b1b',
+    theme_text_main VARCHAR(10) DEFAULT '#0f172a' COMMENT 'Header/Primary font color',
+    theme_text_muted VARCHAR(10) DEFAULT '#64748b' COMMENT 'Sub/muted font color',
+    theme_bg_body VARCHAR(10) DEFAULT '#f8fafc' COMMENT 'Main background color',
+    theme_bg_card VARCHAR(10) DEFAULT '#ffffff' COMMENT 'Card/panel background color',
+    theme_border_color VARCHAR(10) DEFAULT '#e2e8f0' COMMENT 'Card border/divider color',
+    card_border_width TINYINT DEFAULT 1 COMMENT 'Card border width in px (0-3)',
+    card_shadow VARCHAR(10) DEFAULT 'sm' COMMENT 'Card shadow: none, sm, md, lg',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+);
+
+
+-- ============================================================
+-- TABLE A3: tenant_legitimacy_documents (Tenant Application Files)
+-- ============================================================
+-- PURPOSE: Stores uploaded proof of legitimacy files during tenant application.
+-- RULES: Minimum 1 file, maximum 5 files per application (validated in PHP).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_legitimacy_documents (
+    document_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NOT NULL,
+    original_file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY B: AUTHENTICATION & VERIFICATION
+--   Tables: otp_verifications
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE B1: otp_verifications (Temporary OTP Storage)
+-- ============================================================
+-- PURPOSE: Temporary OTP storage for email verification on signup.
+--   This table is NOT redundant with users.email_verified:
+--     • otp_verifications = "what is the current OTP code?" (temporary)
+--     • users.email_verified = "is the email verified?" (permanent flag)
+--
+-- ✅ Approved: Keep this table as-is. No changes needed.
+-- ✅ Approved: Timer lives in DB (expires_at), NOT in .json or browser
+-- ✅ Approved: No attempt_count column needed for now
+--
+-- 📝 NOTE: otp_code CANNOT be the primary key because:
+--   • Two users can get the same 6-digit code at the same time (collision)
+--   • Only 1,000,000 possible codes — collisions are guaranteed
+--   • otp_id (auto-increment) guarantees uniqueness
+--
+-- FLOW:
+--   User clicks "Verify Email" → OTP row created (expires in 5 min)
+--     → Email sent → User enters code → Match? → users.email_verified=TRUE
+--     → DELETE FROM otp_verifications WHERE email=?
+-- ============================================================
+CREATE TABLE IF NOT EXISTS otp_verifications (
+    otp_id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(100) NOT NULL,
+    otp_code VARCHAR(10) NOT NULL,
+    status ENUM('Pending', 'Verified', 'Expired') DEFAULT 'Pending',
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Indexes
+    INDEX idx_email_status (email, status),
+    INDEX idx_expires_at (expires_at)
+);
+
+-- Auto-expire OTPs after 5 minutes
+-- 📝 NOTE: Requires Event Scheduler enabled (SET GLOBAL event_scheduler = ON;)
+DELIMITER //
+CREATE EVENT IF NOT EXISTS expire_old_otps
+ON SCHEDULE EVERY 1 MINUTE
+DO
+BEGIN
+    UPDATE otp_verifications
+    SET status = 'Expired'
+    WHERE status = 'Pending' AND expires_at < NOW();
+END//
+DELIMITER ;
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY C: TENANT BILLING
+--   Tables: tenant_billing_payment_methods, tenant_billing_invoices
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE C1: tenant_billing_payment_methods
+-- ============================================================
+-- PURPOSE: Payment methods for tenant subscription charges.
+--
+-- ✅ Approved: Use AES encryption (PHP-side, openssl_encrypt) for full card number
+-- ✅ Approved: Store last_four_digits separately in plain text for display
+-- ✅ Approved: CVC completely removed — NEVER stored
+-- 🔒 SECURITY: Encrypt/decrypt in PHP using openssl_encrypt/openssl_decrypt
+--   Store the encryption key in .env file, NEVER in code or database.
+--
+-- 📝 FUTURE: Long-term, switch to payment gateway tokens (Stripe/PayMongo)
+--   For now, AES encryption + last 4 is acceptable for MVP.
+--
+-- HOW IT WORKS:
+--   1. User enters full card → PHP encrypts → stores card_number_encrypted
+--   2. PHP extracts substr($card, -4) → stores last_four_digits (plain text)
+--   3. UI displays: •••• •••• •••• 1234 (reads last_four_digits)
+--   4. To charge: PHP decrypts card_number_encrypted server-side
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_billing_payment_methods (
+    method_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NOT NULL,
+
+    -- Card display info (safe to store in plain text)
+    last_four_digits VARCHAR(4) NOT NULL COMMENT 'Last 4 digits of card, plain text',
+    card_brand VARCHAR(20) COMMENT 'Visa, Mastercard, etc.',
+    cardholder_name VARCHAR(100) NOT NULL,
+    exp_month INT NOT NULL,
+    exp_year INT NOT NULL,
+
+    -- Encrypted card data (AES-256 via PHP openssl_encrypt)
+    card_number_encrypted VARBINARY(255) NOT NULL COMMENT 'AES-256 encrypted full card number',
+    -- 🔒 CVC REMOVED — never store CVC, only use at moment of transaction
+
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+);
+
+
+-- ============================================================
+-- TABLE C2: tenant_billing_invoices
+-- ============================================================
+-- PURPOSE: Monthly subscription invoicing for multi-tenant billing.
+--
+-- ⚠ Pending: No retry/payment processing history
+-- ⚠ Pending: No dunning management (escalation for unpaid invoices)
+-- ⚠ Pending: Add payment_attempts counter, next_retry_date for failed invoices
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_billing_invoices (
+    invoice_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NOT NULL,
+    invoice_number VARCHAR(50) UNIQUE NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    billing_period_start DATE NOT NULL,
+    billing_period_end DATE NOT NULL,
+    due_date DATE NOT NULL,
+    status ENUM('Draft', 'Open', 'Paid', 'Void', 'Uncollectible') DEFAULT 'Open',
+    stripe_invoice_id VARCHAR(100) NULL,
+    pdf_url VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paid_at DATETIME NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+
+    -- Indexes
+    INDEX idx_tenant_status_due (tenant_id, status, due_date)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY D: ROLES, PERMISSIONS & RBAC
+--   Tables: user_roles, permissions, role_permissions
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE D1: user_roles (Tenant-Specific Roles + System Roles)
+-- ============================================================
+-- PURPOSE: Roles for RBAC — includes tenant roles AND system roles (super_admin).
+--
+-- ✅ Approved: Solid design, no structural changes needed
+-- ✅ Approved: tenant_id NULL for platform-level roles (super_admin)
+-- ✅ Approved: is_system_role prevents deletion of critical default roles
+-- ✅ Approved: UNIQUE(tenant_id, role_name) prevents duplicates per tenant
+-- ✅ Approved: Soft-delete columns (deleted_at, deleted_by, updated_at)
+--
+-- 📝 NOTE: MySQL treats NULL specially in UNIQUE indexes.
+--   Two rows with tenant_id=NULL, role_name='super_admin' would BOTH be allowed
+--   because NULL ≠ NULL in SQL. Fine for this case (only one super_admin seed).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_roles (
+    role_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NULL COMMENT 'NULL for platform-level roles like super_admin',
+    role_name VARCHAR(50) NOT NULL,
+    role_description TEXT,
+    is_system_role BOOLEAN DEFAULT FALSE COMMENT 'If true, cannot be deleted (e.g. default Admin, super_admin)',
+
+    -- ✅ Approved: Soft delete
+    deleted_at TIMESTAMP NULL,
+    deleted_by INT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    UNIQUE KEY uq_tenant_role (tenant_id, role_name)
+);
+
+-- Seed system roles (run on initial setup)
+-- INSERT INTO user_roles (tenant_id, role_name, role_description, is_system_role) VALUES
+-- (NULL, 'super_admin', 'Platform-level administrator', TRUE);
+
+
+-- ============================================================
+-- TABLE D2: permissions (Global System Actions)
+-- ============================================================
+-- PURPOSE: Global list of all possible system permissions (platform-wide reference).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS permissions (
+    permission_id INT PRIMARY KEY AUTO_INCREMENT,
+    permission_code VARCHAR(100) NOT NULL UNIQUE COMMENT 'e.g. CREATE_ACCOUNT, APPROVE_LOAN',
+    module VARCHAR(50) NOT NULL COMMENT 'For UI grouping, e.g. Users, Loans, Vault',
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Seed system permissions
+INSERT INTO permissions (permission_code, module, description) VALUES
+('VIEW_USERS', 'Users', 'Can view the list of users and employees'),
+('CREATE_USERS', 'Users', 'Can create new users and invite employees'),
+('MANAGE_ROLES', 'Roles', 'Can create custom roles and assign permissions'),
+('VIEW_CLIENTS', 'Clients', 'Can view client profiles and history'),
+('CREATE_CLIENTS', 'Clients', 'Can register new clients'),
+('VIEW_LOANS', 'Loans', 'Can view loan applications and active loans'),
+('CREATE_LOANS', 'Loans', 'Can draft new loan applications'),
+('APPROVE_LOANS', 'Loans', 'Can approve or reject Pending loans'),
+('PROCESS_PAYMENTS', 'Payments', 'Can receive and post loan payments'),
+('VIEW_REPORTS', 'Reports', 'Can generate and view financial reports'),
+('VIEW_APPLICATIONS', 'Applications', 'Can view Pending loan applications'),
+('MANAGE_APPLICATIONS', 'Applications', 'Can approve, reject, or process Pending loan applications'),
+('VIEW_CREDIT_ACCOUNTS', 'Credit Accounts', 'Can view borrower credit accounts, limit recommendations, and upgrade eligibility');
+
+
+-- ============================================================
+-- TABLE D3: role_permissions (Mapping Table)
+-- ============================================================
+-- PURPOSE: Junction table mapping permissions to roles (M:N relationship).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id INT NOT NULL,
+    permission_id INT NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES user_roles(role_id) ON DELETE CASCADE,
+    FOREIGN KEY (permission_id) REFERENCES permissions(permission_id) ON DELETE CASCADE
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY E: USER ACCOUNTS
+--   Tables: users, user_sessions
+--   REMOVED: super_admins (merged into users)
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE E1: users (All Users — Authentication Table)
+-- ============================================================
+-- PURPOSE: Core authentication table for ALL users.
+--   This table = WHO CAN LOG IN. Profile data lives in employees/clients tables.
+--
+-- ✅ Approved: Keep tenant_id (nullable) — NULL only for Super Admins
+-- ✅ Approved: Add basic profile fields (first_name, last_name, date_of_birth, phone_number)
+-- ✅ Approved: super_admins table REMOVED — merged into users with RBAC
+-- ✅ Approved: 'App User' type REMOVED — no longer needed (tenant-scoped app flow)
+-- ✅ Approved: Email is per-tenant unique (uq_tenant_email) — confirmed correct
+--
+-- ⚠ Pending: Remove username column? (Use email as sole login identifier)
+--   Currently kept for backward compatibility. If you approve removal,
+--   all login logic needs to switch from username to email.
+--
+-- ✅ Approved: Soft-delete (deleted_at TIMESTAMP NULL)
+--
+-- ✅ Approved: Add 2FA fields (2fa_enabled, 2fa_secret) for new device auth
+--
+-- ⚠ Pending: Add account_locked_until DATETIME for bruteforce protection?
+--   (Right now only failed_login_attempts is tracked, no auto-lock timer)
+--
+-- MENTAL MODEL:
+--   ┌─────────────────────────────────────────────────────────┐
+--   │  users = AUTHENTICATION (login credentials)             │
+--   └────────────────┬──────────────────────┬─────────────────┘
+--                    │ (1:1)                │ (1:1)
+--                    ▼                      ▼
+--   ┌──────────────────────┐    ┌──────────────────────────────┐
+--   │  employees = WORK    │    │  clients = BORROWER          │
+--   │  PROFILE (dept, pos) │    │  PROFILE (KYC, loans, credit)│
+--   └──────────────────────┘    └──────────────────────────────┘
+--
+-- TENANT-SCOPED REGISTRATION FLOW:
+--   Each tenant has their own website + app download link (tenant_id baked in).
+--   Public website intake (demo.php):
+--   1. Talk to an Expert → INSERT users (tenant_id=X, user_type='inquirer', status='Inactive')
+--   2. Tenant Application → INSERT users (tenant_id=X, user_type='applicant', status='Inactive')
+--   3. Provisioning by Super Admin → UPDATE users SET user_type='Admin', status='Active'
+--   Mobile/client onboarding flow (tenant app):
+--   4. Client registers → INSERT users (tenant_id=X, user_type='Client', status='Inactive')
+--   5. Staff reviews & approves → UPDATE users SET status='Active' → INSERT clients (...)
+--   6. No "floating" users — every non-super-admin always has a tenant_id
+--
+-- EMPLOYEE CREATION FLOW:
+--   1. Tenant admin creates staff account → INSERT users (tenant_id=X, user_type='Employee')
+--   2. INSERT employees (...) with work profile data
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS users (
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NULL COMMENT 'NULL only for Super Admins',
+
+    -- Authentication
+    username VARCHAR(50) NOT NULL COMMENT '✅ KEPT: User prefers username + email dual login',
+    email VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(20),       
+    password_hash VARCHAR(255) NOT NULL,
+    email_verified BOOLEAN DEFAULT FALSE,
+
+    -- Basic identity fields
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    middle_name VARCHAR(50),
+    suffix VARCHAR(10),
+    date_of_birth DATE,
+
+    -- RBAC
+    force_password_change BOOLEAN DEFAULT FALSE,
+    role_id INT NOT NULL,
+    user_type ENUM('Employee', 'Client', 'Admin', 'applicant', 'inquirer', 'Super Admin') NOT NULL
+             COMMENT '✅ Approved: Includes intake/provisioning flow states (applicant/inquirer -> Admin)',
+    status ENUM('Active', 'Inactive', 'Suspended', 'Locked') DEFAULT 'Active',
+    can_manage_billing TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Per-user billing access toggle for tenant admins',
+
+    -- Security
+    verification_token VARCHAR(255),
+    reset_token VARCHAR(255),
+    reset_token_expiry DATETIME,
+    last_login DATETIME,
+    failed_login_attempts INT DEFAULT 0,
+
+    -- 2FA
+    two_fa_enabled BOOLEAN DEFAULT FALSE COMMENT 'Is two-factor auth enabled?',
+    two_fa_secret VARCHAR(255) NULL COMMENT 'TOTP/HOTP secret for 2FA',
+    two_fa_recovery_codes TEXT NULL COMMENT 'Encrypted backup codes for 2FA',
+
+    -- UI preference
+    ui_theme ENUM('light', 'dark') NOT NULL DEFAULT 'light' COMMENT 'Persisted light/dark mode preference per user',
+
+    -- Soft delete
+    deleted_at TIMESTAMP NULL,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    -- Foreign Keys
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (role_id) REFERENCES user_roles(role_id),
+
+    -- Constraints
+    UNIQUE KEY uq_tenant_username (tenant_id, username),
+    UNIQUE KEY uq_tenant_email (tenant_id, email),
+    INDEX idx_reset_token (reset_token),
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_status (status)
+);
+
+
+-- ============================================================
+-- TABLE E2: user_sessions (Active Login Tracking)
+-- ============================================================
+-- PURPOSE: Session tracking for active user logins (security & audit).
+--
+-- ⚠ Pending: Add is_active flag for soft-delete of sessions
+-- ⚠ Pending: Add logout_at DATETIME + reason (manual/timeout/admin revoke)
+-- ⚠ Pending: Concurrent session limits? (max 3 sessions per user?)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_sessions (
+    session_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    session_token VARCHAR(255) NOT NULL UNIQUE,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+
+    -- Indexes
+    INDEX idx_expires_at (expires_at)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY F: AUDIT & COMPLIANCE
+--   Tables: audit_logs
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE F1: audit_logs (Complete Audit Trail)
+-- ============================================================
+-- PURPOSE: Complete audit trail for compliance & forensics.
+--
+-- ✅ Approved: Use application-level PHP logging (not MySQL triggers)
+--   so we can capture WHO performed the action (session user_id).
+--
+-- ⚠ Pending: Change ON DELETE SET NULL to ON DELETE RESTRICT?
+--   Currently if you delete a user, their audit trail loses the user_id.
+--   RESTRICT would prevent deleting users who have audit records.
+--
+-- ⚠ Pending: Add old_value TEXT and new_value TEXT columns?
+--   Would allow tracking WHAT changed, not just THAT it changed.
+--
+-- WHAT TO LOG (via PHP after each action):
+--   • Tenant status changes (accepted, suspended, deleted)
+--   • Plan tier changes (Starter → Pro)
+--   • User role assignments/removals
+--   • Password changes, email changes
+--   • Login events, failed login attempts
+--   • Loan approvals/rejections
+--   • Payment postings/reversals
+-- ============================================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+    log_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT,
+    tenant_id VARCHAR(50),
+    action_type VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id INT,
+    description TEXT,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE SET NULL,
+
+    -- Indexes
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_action_type (action_type),
+    INDEX idx_tenant_date (tenant_id, created_at)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY G: EMPLOYEE MANAGEMENT
+--   Tables: employees
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE G1: employees (Employee Profiles)
+-- ============================================================
+-- PURPOSE: Extended employee profile — linked 1:1 to users table via user_id.
+--   users table = login credentials. This table = work profile (dept, position, HR data).
+--
+-- ⚠ Pending: Change ON DELETE CASCADE to ON DELETE RESTRICT on user_id?
+--   Currently deleting a user cascades to employee record.
+-- ✅ Approved: Soft-delete (deleted_at)
+-- ⚠ Pending: Add employment_end_date for resigned/terminated employees?
+-- ============================================================
+CREATE TABLE IF NOT EXISTS employees (
+    employee_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL UNIQUE,
+    tenant_id VARCHAR(50) NOT NULL,
+    employee_code VARCHAR(20),
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50),
+    last_name VARCHAR(50) NOT NULL,
+    suffix VARCHAR(10),
+    department ENUM('Admin', 'Sales and Marketing', 'Collections', 'Loan Processing') NOT NULL,
+    position VARCHAR(100),
+    contact_number VARCHAR(20),
+    alternate_contact VARCHAR(20),
+    emergency_contact_name VARCHAR(100),
+    emergency_contact_number VARCHAR(20),
+    hire_date DATE NOT NULL,
+    employment_status ENUM('Active', 'On Leave', 'Resigned', 'Terminated') DEFAULT 'Active',
+    profile_picture VARCHAR(255),
+
+    -- ✅ Approved: Soft delete
+    deleted_at TIMESTAMP NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    UNIQUE KEY uq_tenant_empcode (tenant_id, employee_code),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY H: CLIENT MANAGEMENT
+--   Tables: clients, client_documents, document_types
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE H1: clients (Client/Borrower Profiles)
+-- ============================================================
+-- PURPOSE: Client/borrower profiles with KYC data and credit information.
+--   Linked 1:1 to users table via user_id.
+--   A user BECOMES a client when Approved by a tenant admin.
+--
+-- ✅ Approved: This table is NOT redundant with users.
+--   users = login/auth identity. clients = KYC, loans, credit, addresses.
+--   Not all users are clients (employees aren't).
+--
+-- ⚠ Pending: Normalize addresses into client_addresses table?
+--   Currently 32 columns for present + permanent address duplication.
+-- ⚠ Pending: Extract comaker_* fields into separate comakers table?
+--   Currently duplicated in both clients AND loan_applications.
+-- ✅ Approved: Soft-delete (deleted_at)
+-- ⚠ Pending: Change ON DELETE CASCADE to RESTRICT on user_id?
+-- ============================================================
+CREATE TABLE IF NOT EXISTS clients (
+    client_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    client_code VARCHAR(20),
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50),
+    last_name VARCHAR(50) NOT NULL,
+    suffix VARCHAR(10),
+    date_of_birth DATE NOT NULL,
+    gender ENUM('Male', 'Female', 'Other'),
+    civil_status ENUM('Single', 'Married', 'Widowed', 'Divorced', 'Separated'),
+    nationality VARCHAR(50) DEFAULT 'Filipino',
+    contact_number VARCHAR(20) NOT NULL,
+    alternate_contact VARCHAR(20),
+    email_address VARCHAR(100),
+
+    -- Present Address
+    present_house_no VARCHAR(50),
+    present_street VARCHAR(100),
+    present_barangay VARCHAR(100),
+    present_city VARCHAR(100),
+    present_province VARCHAR(100),
+    present_postal_code VARCHAR(10),
+
+    -- Permanent Address
+    permanent_house_no VARCHAR(50),
+    permanent_street VARCHAR(100),
+    permanent_barangay VARCHAR(100),
+    permanent_city VARCHAR(100),
+    permanent_province VARCHAR(100),
+    permanent_postal_code VARCHAR(10),
+    same_as_present BOOLEAN DEFAULT FALSE,
+
+    -- Employment & Income
+    employment_status ENUM('Employed', 'Self-Employed', 'Freelancer', 'Contractual', 'Part-Time', 'OFW', 'Student', 'Unemployed', 'Retired'),
+    occupation VARCHAR(100),
+    employer_name VARCHAR(200),
+    employer_address TEXT,
+    employer_contact VARCHAR(20),
+    monthly_income DECIMAL(12, 2),
+    other_income_source VARCHAR(200),
+    other_income_amount DECIMAL(12, 2),
+
+    -- Comaker Info (⚠ Pending: extract to separate comakers table?)
+    comaker_name VARCHAR(150),
+    comaker_relationship VARCHAR(50),
+    comaker_contact VARCHAR(20),
+    comaker_income DECIMAL(12, 2),
+    comaker_house_no VARCHAR(50),
+    comaker_street VARCHAR(100),
+    comaker_barangay VARCHAR(100),
+    comaker_city VARCHAR(100),
+    comaker_province VARCHAR(100),
+    comaker_postal_code VARCHAR(10),
+
+    -- KYC & Verification
+    id_type VARCHAR(100),
+    client_status ENUM('Active', 'Inactive', 'Blacklisted', 'Deceased') DEFAULT 'Active',
+    blacklist_reason TEXT,
+    profile_picture VARCHAR(255),
+    registration_date DATE NOT NULL,
+    registered_by INT,
+    document_verification_status ENUM('Unverified', 'Verified', 'Approved', 'Rejected') DEFAULT 'Unverified',
+    verification_rejection_reason TEXT,
+
+    -- Credit
+    credit_limit DECIMAL(15,2) DEFAULT 0.00,
+    last_seen_credit_limit DECIMAL(15,2) DEFAULT 0.00,
+    seen_approval_modal BOOLEAN DEFAULT FALSE,
+    credit_limit_tier INT DEFAULT 0,
+
+    -- ✅ Approved: Soft delete
+    deleted_at TIMESTAMP NULL,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    -- Foreign Keys
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (registered_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    UNIQUE KEY uq_tenant_user (tenant_id, user_id),
+    UNIQUE KEY uq_tenant_clientcode (tenant_id, client_code),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ============================================================
+-- TABLE H2: document_types (Global — shared across tenants)
+-- ============================================================
+-- PURPOSE: Master catalog of required/acceptable document types for KYC and loan.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS document_types (
+    document_type_id INT PRIMARY KEY AUTO_INCREMENT,
+    document_name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    is_required BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    loan_purpose VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO document_types (document_name, description, is_required, loan_purpose) VALUES
+('Valid ID Front', 'Front side of government-issued ID', TRUE, NULL),
+('Valid ID Back', 'Back side of government-issued ID', TRUE, NULL),
+('Proof of Income', 'Latest payslip, ITR, or bank statement', TRUE, NULL),
+('Proof of Billing', 'Upload proof of address (utility bill, barangay certificate, etc.)', TRUE, NULL),
+('Proof of Legitimacy Document', 'Any valid proof of legitimacy such as business permit, DTI, or SEC registration', TRUE, 'Business'),
+('Business Financial Statements', 'Latest financial statements or income records', TRUE, 'Business'),
+('Business Plan', 'Business plan or proposal (for new businesses)', FALSE, 'Business'),
+('School Enrollment Certificate', 'Certificate of enrollment or admission letter', TRUE, 'Education'),
+('School ID', 'Valid school ID', TRUE, 'Education'),
+('Tuition Fee Assessment', 'Official assessment of tuition and fees', TRUE, 'Education'),
+('Land Title/Lease Agreement', 'Proof of land ownership or lease', TRUE, 'Agricultural'),
+('Farm Plan', 'Detailed farm plan or proposal', TRUE, 'Agricultural'),
+('Medical Certificate', 'Medical certificate or hospital bill', TRUE, 'Medical'),
+('Prescription/Treatment Plan', 'Doctor''s prescription or treatment plan', FALSE, 'Medical'),
+('Property Documents', 'Land title, tax declaration, or contract to sell', TRUE, 'Housing'),
+('Construction Estimate', 'Detailed construction estimate or quotation', TRUE, 'Housing'),
+('DTI/SEC Registration', 'Business registration documents', FALSE, 'Business'),
+('Barangay Clearance', 'Clearance from local barangay', FALSE, NULL),
+('Marriage Certificate', 'For married applicants', FALSE, NULL),
+('Birth Certificate', 'Birth certificate copy', FALSE, NULL);
+
+
+-- ============================================================
+-- TABLE H3: client_documents (Client-uploaded KYC Documents)
+-- ============================================================
+-- PURPOSE: Client-uploaded KYC documents (identity, income, address proof).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS client_documents (
+    client_document_id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    document_type_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    document_number VARCHAR(100),
+    file_size INT,
+    file_type VARCHAR(50),
+    verified_by INT,
+    verification_date DATETIME,
+    verification_status ENUM('Pending', 'Verified', 'Rejected', 'Expired') DEFAULT 'Pending',
+    verification_notes TEXT,
+    expiry_date DATE,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (document_type_id) REFERENCES document_types(document_type_id),
+    FOREIGN KEY (verified_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    INDEX idx_tenant_client (tenant_id, client_id)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY I: LOAN MANAGEMENT
+--   Tables: loan_products, loan_applications, application_documents,
+--           loans, amortization_schedule
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE I1: loan_products (Per-tenant Loan Offerings)
+-- ============================================================
+-- PURPOSE: Loan product templates/offerings per tenant (pricing, terms, rules).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS loan_products (
+    product_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NOT NULL,
+    product_name VARCHAR(100) NOT NULL,
+    product_type ENUM('Personal Loan', 'Business Loan', 'Emergency Loan') NOT NULL,
+    description TEXT,
+    min_amount DECIMAL(12, 2) NOT NULL,
+    max_amount DECIMAL(12, 2) NOT NULL,
+    interest_rate DECIMAL(5, 2) NOT NULL,
+    interest_type ENUM('Fixed', 'Diminishing', 'Flat') DEFAULT 'Diminishing',
+    min_term_months INT NOT NULL,
+    max_term_months INT NOT NULL,
+    processing_fee_percentage DECIMAL(5, 2) DEFAULT 0,
+    service_charge DECIMAL(10, 2) DEFAULT 0,
+    documentary_stamp DECIMAL(10, 2) DEFAULT 0,
+    insurance_fee_percentage DECIMAL(5, 2) DEFAULT 0,
+    penalty_rate DECIMAL(5, 2) DEFAULT 0,
+    penalty_type ENUM('Daily', 'Monthly', 'Flat') DEFAULT 'Daily',
+    grace_period_days INT DEFAULT 0,
+    minimum_credit_score INT DEFAULT 500,
+    required_documents TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ============================================================
+-- TABLE I2: loan_applications (Loan Application Workflow)
+-- ============================================================
+-- PURPOSE: Loan application from submission through approval/rejection.
+--   11-step workflow: Draft → Submitted → ... → Approved/Rejected/Withdrawn
+--
+-- ⚠ Pending: Comaker data duplicated here AND in clients table — extract to comakers table?
+-- ============================================================
+CREATE TABLE IF NOT EXISTS loan_applications (
+    application_id INT PRIMARY KEY AUTO_INCREMENT,
+    application_number VARCHAR(50) UNIQUE NOT NULL,
+    client_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    product_id INT NOT NULL,
+    requested_amount DECIMAL(12, 2) NOT NULL,
+    approved_amount DECIMAL(12, 2),
+    loan_term_months INT NOT NULL,
+    interest_rate DECIMAL(5, 2) NOT NULL,
+    loan_purpose TEXT,
+    application_data JSON,
+    application_status ENUM(
+        'Draft', 'Submitted', 'Pending Review', 'Under Review',
+        'Document Verification', 'Credit Investigation',
+        'For Approval', 'Approved', 'Rejected', 'Cancelled', 'Withdrawn'
+    ) DEFAULT 'Draft',
+    submitted_date DATETIME,
+    reviewed_by INT,
+    review_date DATETIME,
+    review_notes TEXT,
+    approved_by INT,
+    approval_date DATETIME,
+    approval_notes TEXT,
+    rejected_by INT,
+    rejection_date DATETIME,
+    rejection_reason TEXT,
+
+    -- Comaker (⚠ Pending: extract to separate table?)
+    has_comaker BOOLEAN DEFAULT FALSE,
+    comaker_name VARCHAR(150),
+    comaker_relationship VARCHAR(50),
+    comaker_contact VARCHAR(20),
+    comaker_address TEXT,
+    comaker_income DECIMAL(12, 2),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (product_id) REFERENCES loan_products(product_id),
+    FOREIGN KEY (reviewed_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    FOREIGN KEY (approved_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    FOREIGN KEY (rejected_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_status (application_status)
+);
+
+
+-- ============================================================
+-- TABLE I3: application_documents (Loan Application Documents)
+-- ============================================================
+-- PURPOSE: Documents uploaded with loan application (separate from profile docs).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS application_documents (
+    app_document_id INT PRIMARY KEY AUTO_INCREMENT,
+    application_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    document_type_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (application_id) REFERENCES loan_applications(application_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (document_type_id) REFERENCES document_types(document_type_id),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ============================================================
+-- TABLE I4: loans (Active/Disbursed Loan Records)
+-- ============================================================
+-- PURPOSE: Disbursed loans with complete payment and balance tracking.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS loans (
+    loan_id INT PRIMARY KEY AUTO_INCREMENT,
+    loan_number VARCHAR(50) UNIQUE NOT NULL,
+    application_id INT NOT NULL,
+    client_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    product_id INT NOT NULL,
+    principal_amount DECIMAL(12, 2) NOT NULL,
+    interest_amount DECIMAL(12, 2) NOT NULL,
+    total_loan_amount DECIMAL(12, 2) NOT NULL,
+    processing_fee DECIMAL(10, 2) DEFAULT 0,
+    service_charge DECIMAL(10, 2) DEFAULT 0,
+    documentary_stamp DECIMAL(10, 2) DEFAULT 0,
+    insurance_fee DECIMAL(10, 2) DEFAULT 0,
+    other_charges DECIMAL(10, 2) DEFAULT 0,
+    total_deductions DECIMAL(12, 2) DEFAULT 0,
+    net_proceeds DECIMAL(12, 2) DEFAULT 0,
+    interest_rate DECIMAL(5, 2) NOT NULL,
+    loan_term_months INT NOT NULL,
+    monthly_amortization DECIMAL(12, 2) NOT NULL,
+    payment_frequency ENUM('Daily', 'Weekly', 'Bi-Weekly', 'Monthly') DEFAULT 'Monthly',
+    number_of_payments INT NOT NULL,
+    release_date DATE NOT NULL,
+    first_payment_date DATE NOT NULL,
+    maturity_date DATE NOT NULL,
+    loan_status ENUM('Active', 'Fully Paid', 'Overdue', 'Restructured', 'Written Off', 'Cancelled') DEFAULT 'Active',
+    released_by INT NOT NULL,
+    disbursement_method ENUM('Cash', 'Check', 'Bank Transfer', 'GCash') DEFAULT 'Cash',
+    disbursement_reference VARCHAR(100),
+    total_paid DECIMAL(12, 2) DEFAULT 0,
+    principal_paid DECIMAL(12, 2) DEFAULT 0,
+    interest_paid DECIMAL(12, 2) DEFAULT 0,
+    penalty_paid DECIMAL(12, 2) DEFAULT 0,
+    remaining_balance DECIMAL(12, 2),
+    outstanding_principal DECIMAL(12, 2),
+    outstanding_interest DECIMAL(12, 2),
+    outstanding_penalty DECIMAL(12, 2) DEFAULT 0,
+    last_payment_date DATE,
+    next_payment_due DATE,
+    days_overdue INT DEFAULT 0,
+    loan_agreement_file VARCHAR(255),
+    promissory_note_file VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (application_id) REFERENCES loan_applications(application_id),
+    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (product_id) REFERENCES loan_products(product_id),
+    FOREIGN KEY (released_by) REFERENCES employees(employee_id),
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_tenant_client (tenant_id, client_id),
+    INDEX idx_loan_status (loan_status),
+    INDEX idx_next_payment (next_payment_due)
+);
+
+
+-- ============================================================
+-- TABLE I5: amortization_schedule (Loan Payment Schedule)
+-- ============================================================
+-- PURPOSE: Pre-calculated payment schedule (one row per payment period).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS amortization_schedule (
+    schedule_id INT PRIMARY KEY AUTO_INCREMENT,
+    loan_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    payment_number INT NOT NULL,
+    due_date DATE NOT NULL,
+    beginning_balance DECIMAL(12, 2) NOT NULL,
+    principal_amount DECIMAL(12, 2) NOT NULL,
+    interest_amount DECIMAL(12, 2) NOT NULL,
+    total_payment DECIMAL(12, 2) NOT NULL,
+    ending_balance DECIMAL(12, 2) NOT NULL,
+    payment_status ENUM('Pending', 'Paid', 'Overdue', 'Partially Paid') DEFAULT 'Pending',
+    amount_paid DECIMAL(12, 2) DEFAULT 0,
+    payment_date DATE,
+    days_late INT DEFAULT 0,
+    penalty_amount DECIMAL(10, 2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (loan_id) REFERENCES loans(loan_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY J: PAYMENT PROCESSING
+--   Tables: payments, payment_transactions
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE J1: payments (Loan Payments Received)
+-- ============================================================
+-- PURPOSE: Individual loan payments (receipt → posted → verified workflow).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id INT PRIMARY KEY AUTO_INCREMENT,
+    payment_reference VARCHAR(50) UNIQUE NOT NULL,
+    loan_id INT NOT NULL,
+    client_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    payment_date DATE NOT NULL,
+    payment_amount DECIMAL(12, 2) NOT NULL,
+    principal_paid DECIMAL(12, 2) NOT NULL,
+    interest_paid DECIMAL(12, 2) NOT NULL,
+    penalty_paid DECIMAL(12, 2) DEFAULT 0,
+    advance_payment DECIMAL(12, 2) DEFAULT 0,
+    payment_method ENUM('Cash', 'Check', 'Bank Transfer', 'GCash', 'Online Payment') NOT NULL,
+    payment_reference_number VARCHAR(100),
+    bank_name VARCHAR(100),
+    check_number VARCHAR(50),
+    check_date DATE,
+    official_receipt_number VARCHAR(50),
+    receipt_file VARCHAR(255),
+    received_by INT NOT NULL,
+    posted_by INT,
+    posted_date DATETIME,
+    payment_status ENUM('Pending', 'Posted', 'Verified', 'Cancelled', 'Bounced') DEFAULT 'Pending',
+    remarks TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (loan_id) REFERENCES loans(loan_id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(client_id),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (received_by) REFERENCES employees(employee_id),
+    FOREIGN KEY (posted_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_tenant_client (tenant_id, client_id),
+    INDEX idx_payment_status (payment_status)
+);
+
+
+-- ============================================================
+-- TABLE J2: payment_transactions (Online/Gateway Payments)
+-- ============================================================
+-- PURPOSE: Payment gateway transactions (PayMongo, GCash, etc.).
+--   Separate from payments table: this = gateway, payments = loan ledger.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    transaction_id INT AUTO_INCREMENT PRIMARY KEY,
+    transaction_ref VARCHAR(100) UNIQUE NOT NULL,
+    client_id INT NOT NULL,
+    loan_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    source_id VARCHAR(255) NULL COMMENT 'Payment gateway source ID',
+    amount DECIMAL(12,2) NOT NULL,
+    payment_method ENUM('PayMongo', 'GCash', 'Cash', 'Bank Transfer', 'Check') NOT NULL,
+    payment_type ENUM('regular', 'early_settlement') DEFAULT 'regular',
+    status ENUM('pending', 'completed', 'failed', 'cancelled') DEFAULT 'pending',
+    payment_date DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    INDEX idx_transaction_ref (transaction_ref),
+    INDEX idx_client_loan (client_id, loan_id),
+    INDEX idx_status (status),
+    INDEX idx_tenant (tenant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY K: CREDIT & INVESTIGATIONS
+--   Tables: credit_investigations, credit_scores
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE K1: credit_investigations (Client Credit Assessment)
+-- ============================================================
+-- PURPOSE: Due diligence investigation reports for loan underwriting.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS credit_investigations (
+    ci_id INT PRIMARY KEY AUTO_INCREMENT,
+    client_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    conducted_by INT NOT NULL,
+    investigation_date DATE NOT NULL,
+    business_exists BOOLEAN,
+    business_location_verified BOOLEAN,
+    business_operational BOOLEAN,
+    business_notes TEXT,
+    character_rating ENUM('Excellent', 'Good', 'Fair', 'Poor'),
+    reputation_notes TEXT,
+    income_verified BOOLEAN,
+    assets_verified BOOLEAN,
+    existing_obligations TEXT,
+    references_contacted BOOLEAN,
+    references_feedback TEXT,
+    recommendation ENUM('Highly Recommended', 'Recommended', 'Conditional', 'Not Recommended'),
+    investigation_remarks TEXT,
+    ci_report_file VARCHAR(255),
+    status ENUM('Pending', 'Completed', 'Cancelled') DEFAULT 'Pending',
+    completed_at DATETIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (conducted_by) REFERENCES employees(employee_id),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ============================================================
+-- TABLE K2: credit_scores (Loan Underwriting Scoring)
+-- ============================================================
+-- PURPOSE: Computed credit scores for approval decisions and risk assessment.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS credit_scores (
+    score_id INT PRIMARY KEY AUTO_INCREMENT,
+    client_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    ci_id INT,
+    income_score INT DEFAULT 0,
+    employment_score INT DEFAULT 0,
+    credit_history_score INT DEFAULT 0,
+    collateral_score INT DEFAULT 0,
+    character_score INT DEFAULT 0,
+    business_score INT DEFAULT 0,
+    total_score INT DEFAULT 0,
+    credit_rating ENUM('Excellent', 'Good', 'Fair', 'Poor', 'High Risk'),
+    max_loan_amount DECIMAL(12, 2),
+    recommended_interest_rate DECIMAL(5, 2),
+    computed_by INT,
+    computation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (ci_id) REFERENCES credit_investigations(ci_id) ON DELETE SET NULL,
+    FOREIGN KEY (computed_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY L: COMMUNICATION & NOTIFICATIONS
+--   Tables: notifications, chat_messages
+-- ************************************************************
+-- ************************************************************
+
+
+-- ============================================================
+-- TABLE L1: notifications (User Notifications/Alerts)
+-- ============================================================
+-- PURPOSE: Application notifications (payments due, loan Approved, etc).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notifications (
+    notification_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    notification_type ENUM(
+        'Payment Due', 'Payment Received', 'Loan Approved', 'Loan Rejected',
+        'Document Required', 'Appointment Reminder', 'Message Received',
+        'System Alert', 'General'
+    ) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    link VARCHAR(255),
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at DATETIME,
+    priority ENUM('Low', 'Medium', 'High') DEFAULT 'Medium',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_user_read (user_id, is_read)
+);
+
+
+-- ============================================================
+-- TABLE L2: chat_messages (In-app Messaging)
+-- ============================================================
+-- PURPOSE: Direct messaging between employees and clients.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    sender_id INT NOT NULL,
+    receiver_id INT NOT NULL,
+    tenant_id VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sender_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ************************************************************
+-- ************************************************************
+--   CATEGORY M: SYSTEM CONFIGURATION
+--   Tables: system_settings, tenant_feature_toggles, tenant_website_content
+-- ************************************************************
+-- ************************************************************
+
+-- ============================================================
+-- TABLE M1: system_settings (Per-tenant Configuration)
+-- ============================================================
+-- PURPOSE: Per-tenant system configuration (business rules, feature flags, etc).
+-- 📝 NOTE: tenant_settings table (old Table 22) has been REMOVED — it was a
+--   duplicate of this table. Use system_settings for ALL tenant config.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS system_settings (
+    setting_id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(50) NOT NULL,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    setting_category VARCHAR(50),
+    description TEXT,
+    data_type ENUM('String', 'Number', 'Boolean', 'JSON') DEFAULT 'String',
+    is_editable BOOLEAN DEFAULT TRUE,
+    updated_by INT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (updated_by) REFERENCES employees(employee_id) ON DELETE SET NULL,
+    UNIQUE KEY uq_tenant_key (tenant_id, setting_key),
+    INDEX idx_tenant (tenant_id)
+);
+
+
+-- ============================================================
+-- TABLE M2: tenant_feature_toggles (Feature Flags)
+-- ============================================================
+-- PURPOSE: Feature flags for gradual rollout and A/B testing per tenant.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_feature_toggles (
+    toggle_id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL,
+    toggle_key VARCHAR(100) NOT NULL,
+    is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_tenant_toggle (tenant_id, toggle_key),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+);
+
+
+-- ============================================================
+-- TABLE M3: tenant_website_content (Public Website Content)
+-- ============================================================
+-- PURPOSE: Tenant-managed public website content and selected layout template.
+--   Used by admin_panel/website_editor/index.php and public_website/site.php.
+--   All page content is stored in a single website_data JSON column.
+--   The builder (admin_panel/website_editor/index.php) reads/writes this JSON via AJAX.
+--   The public site (public_website/site.php) decodes website_data and renders the template.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_website_content (
+    tenant_id VARCHAR(50) PRIMARY KEY,
+    
+    -- Flexible template string (allows adding templates via code without altering DB)
+    layout_template VARCHAR(50) DEFAULT 'template1.php',
+
+    -- The JSON Bucket for all page content
+    website_data JSON NULL COMMENT 'Stores hero, about, services, toggles, and arrays',
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+);
+
+-- ─── website_data JSON SHAPE REFERENCE ───
+-- {
+--   "company_name": "string",
+--   "short_name": "string (optional brand acronym)",
+--
+--   "primary_color": "#hex",
+--   "border_color": "#hex",
+--   "border_radius": "0-40 (px)",
+--   "shadow_intensity": "0-0.3 (float)",
+--
+--   "text_heading_color": "#hex",
+--   "text_body_color": "#hex",
+--   "btn_bg_color": "#hex",
+--   "btn_text_color": "#hex",
+--
+--   "hero_title": "string",
+--   "hero_subtitle": "string",
+--   "hero_badge_text": "string",
+--   "hero_image": "url or relative path",
+--
+--   "about_body": "string",
+--   "download_description": "string",
+--   "footer_desc": "string",
+--
+--   "contact_address": "string",
+--   "contact_phone": "string",
+--   "contact_email": "string",
+--   "contact_hours": "string",
+--
+--   "show_services": true/false,
+--   "show_calculator": true/false,
+--   "show_stats": true/false,
+--   "show_about": true/false,
+--   "show_download": true/false,
+--
+--   "services": [
+--     { "icon": "material_icon_name", "title": "string", "description": "string" }
+--   ],
+--
+--   "section_styles": {
+--     "sec_hero": { "bg": "#hex", "gradient": bool, "grad_color2": "#hex", "grad_dir": "135deg|to right|circle" },
+--     "sec_services": { ... },
+--     "sec_stats": { ... },
+--     "sec_calc": { ... },
+--     "sec_about": { ... },
+--     "sec_download": { ... }
+--   }
+-- }
+-- ─── END JSON SHAPE ───
+
+
+-- ************************************************************
+-- ************************************************************
+--   REMOVED TABLES (Kept here for reference only)
+-- ************************************************************
+-- ************************************************************
+
+-- TABLE super_admins → REMOVED, merged into users with RBAC (user_type='Super Admin', tenant_id=NULL)
+-- TABLE platform_app_users → REMOVED, 'App User' type eliminated (tenant-scoped app flow)
+-- TABLE tenant_settings → REMOVED, duplicate of system_settings
+
+
+-- ============================================================
+-- ============================================================
+--   ITEMS STILL Pending YOUR APPROVAL
+-- ============================================================
+-- ============================================================
+--
+-- These are things we discussed but you haven't explicitly Approved yet.
+-- Reply with which ones you want applied.
+--
+-- ┌────┬──────────────────────────────────────────────────────────────┬──────────┐
+-- │ #  │ Item                                                         │ Table    │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 1  │ Remove username column? Use email as sole login identifier.  │ users    │
+-- │    │ All login logic would need to switch from username to email. │          │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 2  │ ❌ REJECTED — Per-tenant unique email is correct.            │ users    │
+-- │    │ Tenant-scoped flow: users always have tenant_id at signup.   │          │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 3  │ ✅ Approved & APPLIED — soft-delete added to users,          │ multiple │
+-- │    │ employees, clients, and user_roles.                          │          │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 4  │ Add old_value/new_value columns to audit_logs?              │ audit    │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 5  │ Change ON DELETE CASCADE to RESTRICT on audit-critical FKs? │ multiple │
+-- │    │ (verified_by, approved_by, received_by, etc.)               │          │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 6  │ ✅ Approved & APPLIED — soft-delete added to user_roles     │ roles    │
+-- │    │ (deleted_at, deleted_by, updated_at).                       │          │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 7  │ Normalize client addresses into client_addresses table?     │ clients  │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 8  │ Extract comaker data into separate comakers table?          │ clients  │
+-- │    │ (Currently duplicated in clients AND loan_applications)     │ + loans  │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 9  │ ✅ Approved & APPLIED — 2FA fields added to users            │ users    │
+-- │    │ (two_fa_enabled, two_fa_secret, two_fa_recovery_codes).    │          │
+-- ├────┼──────────────────────────────────────────────────────────────┼──────────┤
+-- │ 10 │ Add account_locked_until DATETIME for auto-lock on brute?  │ users    │
+-- └────┴──────────────────────────────────────────────────────────────┴──────────┘
+-- ============================================================
+-- ============================================================
+--   PENDING SCHEMA UPDATES (DIKO ALAM HASSLE FOR NOW)
+-- ============================================================
+-- ============================================================
+--
+--  TODO 1 (Table E1 - users): Drop 'username' column. Update all backend auth 
+--         logic to use 'email' as the sole login identifier.
+--
+--  TODO 2: ❌ CANCELLED — Per-tenant unique email (uq_tenant_email) is correct.
+--         Tenant-scoped app flow means users always have a tenant_id at signup.
+--
+--  TODO 3 (Table F1 - audit_logs): Add 'old_value' (TEXT/JSON) and 'new_value' 
+--         (TEXT/JSON) to track exact state changes, not just the action taken.
+--
+--  TODO 4 (Multiple Tables): Change audit-critical Foreign Keys (e.g., verified_by, 
+--         posted_by, released_by) from ON DELETE CASCADE/SET NULL to ON DELETE RESTRICT 
+--         to preserve historical financial integrity.
+--
+--  TODO 5 (Table H1 - clients): Drop the 12 hardcoded 'present' and 'permanent' 
+--         address columns. Migrate to a normalized 'client_addresses' table.
+--
+--  TODO 6 (Table H1 & I2): Drop 'comaker_*' columns from 'clients' and 
+--         'loan_applications'. Migrate to a normalized 'loan_comakers' table 
+--         linked directly to 'application_id'.
+--
+--  TODO 7: ✅ DONE — 2FA fields (two_fa_enabled, two_fa_secret, two_fa_recovery_codes)
+--         already exist in the users table.
+--
+--  TODO 8 (Table E1 - users): Add 'account_locked_until' (DATETIME NULL) to 
+--         support brute-force lockout logic.
+--
+-- ============================================================
+-- SYSTEM SEED DATA (SUPER ADMIN)
+-- ============================================================
+
+-- 1. Create the platform-level Super Admin role
+INSERT INTO user_roles (tenant_id, role_name, role_description, is_system_role) 
+VALUES (NULL, 'Super Admin', 'Master Platform Administrator', TRUE);
+
+-- 2. Create the 'rhob' admin account
+-- The password_hash below is a generated Bcrypt hash for "1234"
+INSERT INTO users (
+    tenant_id, 
+    username, 
+    email, 
+    password_hash, 
+    role_id, 
+    user_type, 
+    status
+) VALUES (
+    NULL, 
+    'rhob@microfin.com', 
+    'gleomir28@gmail.com', 
+    '$2y$10$WAX5NHe0AGODm6k2skpJT.DrLQHrvwsmEofIb8LBN93x/gtuVYv5a', 
+    (SELECT role_id FROM user_roles WHERE role_name = 'Super Admin' AND tenant_id IS NULL LIMIT 1), 
+    'Super Admin', 
+    'Active'
+);
+-- ============================================================
+-- END OF SCHEMA
+-- ============================================================

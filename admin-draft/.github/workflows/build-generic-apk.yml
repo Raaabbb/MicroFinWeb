@@ -1,0 +1,114 @@
+name: Build Shared Mobile APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: Android app label shown to users
+        required: false
+        default: MicroFin
+  push:
+    branches:
+      - main
+    paths:
+      - microfin_mobile/**
+      - .github/workflows/build-generic-apk.yml
+      - '!microfin_mobile/microfin_app.apk'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: shared-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-shared-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve build variables
+        id: vars
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          if [ -z "$APP_NAME" ]; then
+            APP_NAME="MicroFin"
+          fi
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: microfin_mobile
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: microfin_mobile
+        env:
+          APP_NAME: ${{ steps.vars.outputs.app_name }}
+        run: |
+          flutter build apk --release \
+            --dart-define=APP_NAME="$APP_NAME"
+
+      - name: Replace served APK
+        run: |
+          cp microfin_mobile/build/app/outputs/flutter-apk/app-release.apk microfin_mobile/microfin_app.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: microfin_app-shared-apk
+          path: microfin_mobile/microfin_app.apk
+          if-no-files-found: error
+
+      - name: Reset workspace to APK-only change
+        run: |
+          cp microfin_mobile/microfin_app.apk "$RUNNER_TEMP/microfin_app.apk"
+          git reset --hard HEAD
+          git clean -fd
+          cp "$RUNNER_TEMP/microfin_app.apk" microfin_mobile/microfin_app.apk
+
+      - name: Commit updated APK
+        run: |
+          if [ -z "$(git status --porcelain -- microfin_mobile/microfin_app.apk)" ]; then
+            echo "microfin_app.apk is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add microfin_mobile/microfin_app.apk
+          git commit -m "chore(apk): rebuild shared microfin_app.apk"
+
+          TARGET_REF="${GITHUB_REF_NAME:-main}"
+          for attempt in 1 2 3; do
+            git fetch origin "${TARGET_REF}"
+            git rebase "origin/${TARGET_REF}"
+            if git push origin "HEAD:${TARGET_REF}"; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+
+          echo "Failed to push shared APK after multiple attempts."
+          exit 1

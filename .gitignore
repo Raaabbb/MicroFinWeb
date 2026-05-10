@@ -1,0 +1,30 @@
+# Local automation toggles
+admin-draft/.autopush.disabled
+
+# Local-only configuration
+admin-draft/microfin_backend/config/local_mail_config.php
+admin-draft/microfin_backend/config/local_db_config.php
+admin-draft/microfin_mobile/api/local_config.php
+
+# Scratch and archived workspaces
+admin-draft/scratch/
+admin-draft/archive/
+admin-draft/microfin_backend/scratch/
+admin-draft/microfin_web/scratch/
+
+# Android build artifacts
+admin-draft/microfin_mobile/build/
+admin-draft/microfin_mobile/.gradle/
+admin-draft/microfin_mobile/local.properties
+
+# Uploads and temporary files
+admin-draft/uploads/
+admin-draft/microfin_backend/temp_cache/
+
+# OS/editor noise
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+admin-draft/microfin_backend/mobile_api/local_config.php

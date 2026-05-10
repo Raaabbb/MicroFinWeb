@@ -1,0 +1,10 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "bash microfin_platform/start.sh"
+restartPolicyType = "ON_FAILURE"
+
+# Shared APK note:
+# Mobile delivery now uses one shared company-branded APK for all tenants.
+# Tenant websites should distribute the same APK and pass tenant context by QR/referral.

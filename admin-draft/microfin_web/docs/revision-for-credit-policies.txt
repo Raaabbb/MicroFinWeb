@@ -1,0 +1,92 @@
+INSERT INTO document_types (document_name, description, is_required, loan_purpose) VALUES
+-- Required ID uploads
+('Valid ID Front', 'Front side of applicant valid government-issued or institution-accepted ID', TRUE, NULL),
+('Valid ID Back', 'Back side of applicant valid government-issued or institution-accepted ID', TRUE, NULL),
+
+-- Accepted identity documents
+('National ID (PhilID/ePhilID)', 'Philippine Identification System ID including PhilID or ePhilID', FALSE, NULL),
+('Passport', 'Philippine or foreign passport accepted as a valid identity document', FALSE, NULL),
+('Driver''s License', 'Driver''s license or electronic driver''s license accepted as a valid identity document', FALSE, NULL),
+('UMID', 'Unified Multi-Purpose ID accepted as a valid identity document', FALSE, NULL),
+('SSS ID', 'Social Security System ID or digitized SSS ID accepted as a valid identity document', FALSE, NULL),
+('GSIS e-Card', 'Government Service Insurance System e-Card accepted as a valid identity document', FALSE, NULL),
+('PRC ID', 'Professional Regulation Commission ID accepted as a valid identity document', FALSE, NULL),
+('Postal ID', 'Postal ID accepted as a valid identity document', FALSE, NULL),
+('Alien Certificate of Registration (ACR I-Card)', 'Alien Certificate of Registration or ACR I-Card for foreign nationals', FALSE, NULL),
+('Seaman''s Book / SIRB', 'Seaman''s Book or Seafarer''s Identification and Record Book', FALSE, NULL),
+('Senior Citizen ID', 'Senior Citizen ID accepted by some institutions as a valid identity document', FALSE, NULL),
+('PWD ID', 'Person with Disability ID or NCDA-issued ID accepted by some institutions', FALSE, NULL),
+('Voter''s ID', 'Voter''s ID, digitized voter''s ID, or similar voter registration ID accepted by some institutions', FALSE, NULL),
+('NBI Clearance', 'National Bureau of Investigation clearance accepted by some institutions as identity proof', FALSE, NULL),
+('Police Clearance', 'Police clearance with photo and signature accepted by some institutions', FALSE, NULL),
+('TIN ID', 'Tax Identification Number ID accepted by some institutions', FALSE, NULL),
+('School ID', 'Valid school ID accepted in some contexts, especially student-related applications', FALSE, 'Education'),
+('Company ID', 'Company ID accepted by some institutions but may not be valid for all loan or housing transactions', FALSE, NULL),
+('Barangay ID', 'Barangay ID accepted by some institutions but may not be valid for all loan or housing transactions', FALSE, NULL),
+('OFW ID', 'Overseas Filipino Worker ID accepted in some contexts', FALSE, NULL),
+('OWWA ID', 'Overseas Workers Welfare Administration ID accepted in some contexts', FALSE, NULL),
+('IBP ID', 'Integrated Bar of the Philippines ID accepted by some institutions', FALSE, NULL),
+('MARINA ID', 'Maritime Industry Authority ID accepted by some institutions', FALSE, NULL),
+('Government Office / GOCC ID', 'Government office or GOCC-issued ID such as AFP or similar government entity ID', FALSE, NULL);
+
+-- Income documents
+('Certificate of Employment', 'Certificate of employment indicating position and tenure', FALSE, NULL),
+('Latest Payslip', 'Most recent payslip from employer', FALSE, NULL),
+('Bank Statement', 'Recent bank statement showing income or cash flow', FALSE, NULL),
+('Income Tax Return (ITR)', 'Latest filed income tax return', FALSE, NULL),
+('Remittance Record', 'Proof of remittance for OFW or externally funded applicants', FALSE, NULL),
+('Business Financial Statements', 'Latest business financial statements or income records', FALSE, 'Business'),
+('Sales Records', 'Sales records or income logs for business applicants', FALSE, 'Business'),
+
+-- Address / personal records
+('Utility Bill', 'Utility bill used as proof of address', FALSE, NULL),
+('Barangay Certificate', 'Barangay certificate used for residency or local verification', FALSE, NULL),
+('Lease Agreement', 'Lease agreement used as proof of address or occupancy', FALSE, NULL),
+('Marriage Certificate', 'Marriage certificate for married applicants when applicable', FALSE, NULL),
+('Birth Certificate', 'Birth certificate copy when applicable', FALSE, NULL),
+
+-- Business documents
+('Business Permit', 'Valid business permit issued by local authority', FALSE, 'Business'),
+('DTI Registration', 'DTI registration certificate', FALSE, 'Business'),
+('SEC Registration', 'SEC registration certificate', FALSE, 'Business'),
+('BIR Registration', 'BIR registration documents', FALSE, 'Business'),
+('Business Plan', 'Business plan or proposal for new or expanding businesses', FALSE, 'Business'),
+
+-- Education documents
+('Certificate of Enrollment', 'Certificate of enrollment or admission confirmation', FALSE, 'Education'),
+('Admission Letter', 'Official school admission letter', FALSE, 'Education'),
+('Tuition Fee Assessment', 'Official assessment of tuition and fees', FALSE, 'Education'),
+('Statement of Account', 'Official school statement of account', FALSE, 'Education'),
+
+-- Agricultural documents
+('Land Title', 'Proof of land ownership for agricultural applicant', FALSE, 'Agricultural'),
+('Farm Lease Agreement', 'Lease agreement for agricultural land use', FALSE, 'Agricultural'),
+('Farm Plan', 'Detailed farm plan or agricultural proposal', FALSE, 'Agricultural'),
+('Farm Certification', 'Barangay or municipal certification related to farm operations', FALSE, 'Agricultural'),
+
+-- Medical documents
+('Medical Certificate', 'Medical certificate issued by doctor or hospital', FALSE, 'Medical'),
+('Hospital Bill', 'Hospital bill or billing statement', FALSE, 'Medical'),
+('Prescription', 'Doctor''s prescription', FALSE, 'Medical'),
+('Treatment Plan', 'Treatment or procedure plan from doctor or hospital', FALSE, 'Medical'),
+
+-- Housing / property documents
+('Tax Declaration', 'Tax declaration related to property', FALSE, 'Housing'),
+('Contract to Sell', 'Contract to sell for property purchase', FALSE, 'Housing'),
+('Construction Estimate', 'Detailed construction estimate or quotation', FALSE, 'Housing'),
+('Building Permit', 'Building permit issued by local authority', FALSE, 'Housing'),
+('Contractor Quotation', 'Quotation from contractor or supplier', FALSE, 'Housing'),
+
+-- Guarantor documents
+('Guarantor Valid ID Front', 'Front side of guarantor government-issued ID', FALSE, NULL),
+('Guarantor Valid ID Back', 'Back side of guarantor government-issued ID', FALSE, NULL),
+('Guarantor Proof of Income', 'Income document of guarantor such as payslip or bank statement', FALSE, NULL),
+('Guarantor Proof of Address', 'Proof of address of guarantor', FALSE, NULL),
+('Guarantor Consent Letter', 'Signed consent or undertaking letter from guarantor', FALSE, NULL),
+
+-- Collateral documents
+('Collateral Ownership Document', 'Proof of ownership of collateral asset', FALSE, NULL),
+('Official Receipt (OR)', 'Official receipt for vehicle or asset collateral', FALSE, NULL),
+('Certificate of Registration (CR)', 'Certificate of registration for vehicle collateral', FALSE, NULL),
+('Appraisal Report', 'Valuation or appraisal report for collateral', FALSE, NULL),
+('Collateral Photos', 'Photos of collateral item or property', FALSE, NULL);
