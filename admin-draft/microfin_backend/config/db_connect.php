@@ -22,6 +22,12 @@ function mf_env_first(array $keys)
         if ($value !== false && trim((string) $value) !== '') {
             return (string) $value;
         }
+        if (isset($_ENV[$key]) && trim((string) $_ENV[$key]) !== '') {
+            return (string) $_ENV[$key];
+        }
+        if (isset($_SERVER[$key]) && trim((string) $_SERVER[$key]) !== '') {
+            return (string) $_SERVER[$key];
+        }
     }
 
     return null;

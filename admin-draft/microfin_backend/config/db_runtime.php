@@ -8,6 +8,12 @@ if (!function_exists('mf_env_first')) {
             if ($value !== false && trim((string) $value) !== '') {
                 return (string) $value;
             }
+            if (isset($_ENV[$key]) && trim((string) $_ENV[$key]) !== '') {
+                return (string) $_ENV[$key];
+            }
+            if (isset($_SERVER[$key]) && trim((string) $_SERVER[$key]) !== '') {
+                return (string) $_SERVER[$key];
+            }
         }
 
         return null;
@@ -83,8 +89,8 @@ if (!function_exists('mf_is_railway_runtime')) {
             'RAILWAY_PRIVATE_DOMAIN',
             'RAILWAY_STATIC_URL',
         ] as $key) {
-            $value = getenv($key);
-            if ($value !== false && trim((string) $value) !== '') {
+            $value = mf_env_first([$key]);
+            if ($value !== null) {
                 return true;
             }
         }
