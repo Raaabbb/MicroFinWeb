@@ -1,0 +1,3 @@
+# Deny all direct access to sensitive documents
+# These files should only be served via the authorized PHP wrapper
+Deny from all
