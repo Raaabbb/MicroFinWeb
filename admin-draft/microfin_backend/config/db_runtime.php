@@ -253,12 +253,15 @@ if (!function_exists('mf_resolve_db_targets')) {
             $remoteTarget = mf_resolve_public_db_target();
         }
 
-        // Build final targets array based on user preference: Localhost first, then Railway.
-        if ($dbMode === 'remote' && $remoteTarget !== null) {
-            // User explicitly wants remote only (or first)
+        // Build final targets array based on user preference
+        if ($remoteTarget !== null && ($dbMode === 'remote' || $isRailway)) {
+            // Priority to remote if explicitly requested OR if we are in the cloud (Railway)
             $targets = [$remoteTarget];
+            if ($dbMode === 'auto') {
+                $targets = array_merge($targets, $localTargets);
+            }
         } else {
-            // Default: Local targets first, then remote fallback
+            // Default (Local Development): Local targets first, then remote fallback
             $targets = $localTargets;
             if ($remoteTarget !== null) {
                 $targets[] = $remoteTarget;
