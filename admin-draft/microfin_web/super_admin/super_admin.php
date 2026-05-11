@@ -13,6 +13,7 @@ mf_require_super_admin_session($pdo, [
 ]);
 
 require_once '../../microfin_backend/auth/tenant_identity.php';
+require_once '../../microfin_backend/documents/document_access.php';
 
 // Resolve any pending tenant subscriptions automagically!
 resolve_tenant_billing($pdo);
@@ -2287,7 +2288,8 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                                                         if ($sub_files) {
                                                             foreach ($sub_files as $file) {
                                                                 $file_name = basename($file);
-                                                                $valid_doc_paths[] = '../../uploads/business_permits/' . $t['tenant_id'] . '/' . str_replace('%2E', '.', rawurlencode($file_name));
+                                                                // Use proxy URL instead of direct link
+                                                                $valid_doc_paths[] = mf_document_view_url('uploads/business_permits/' . $t['tenant_id'] . '/' . $file_name);
                                                             }
                                                         }
                                                     }
@@ -2297,7 +2299,8 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                                                     if ($root_files) {
                                                         foreach ($root_files as $file) {
                                                             $file_name = basename($file);
-                                                            $url_path = '../../uploads/business_permits/' . str_replace('%2E', '.', rawurlencode($file_name));
+                                                            // Use proxy URL instead of direct link
+                                                            $url_path = mf_document_view_url('uploads/business_permits/' . $file_name);
                                                             if (!in_array($url_path, $valid_doc_paths)) {
                                                                 $valid_doc_paths[] = $url_path;
                                                             }

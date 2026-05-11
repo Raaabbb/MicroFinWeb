@@ -1,0 +1,6 @@
+# Deny all direct access to the uploads folder
+# This ensures files can only be accessed through authorized backend scripts
+Deny from all
+
+# Prevent directory listing
+Options -Indexes

@@ -48,6 +48,7 @@ if (!function_exists('mf_document_candidate_relative_paths')) {
         if (str_starts_with($normalized, 'uploads/')) {
             $candidates[] = 'microfin_mobile/' . $normalized;
             $candidates[] = 'admin-draft/microfin_web/' . $normalized;
+            $candidates[] = 'admin-draft/' . $normalized;
         }
 
         return array_values(array_unique(array_filter($candidates, static fn ($item) => is_string($item) && $item !== '')));

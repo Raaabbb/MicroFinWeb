@@ -18,7 +18,18 @@ admin-draft/microfin_mobile/.gradle/
 admin-draft/microfin_mobile/local.properties
 
 # Uploads and temporary files
-admin-draft/uploads/
+admin-draft/uploads/*
+admin-draft/microfin_web/uploads/*
+admin-draft/microfin_web/uploads/business_permits/*
+admin-draft/microfin_web/uploads/client_documents/*
+admin-draft/microfin_web/uploads/hero/*
+admin-draft/microfin_web/uploads/tenant_logos/*
+
+# Preserve security files
+!admin-draft/uploads/**/.htaccess
+!admin-draft/microfin_web/uploads/**/.htaccess
+!admin-draft/microfin_web/uploads/**/index.php
+
 admin-draft/microfin_backend/temp_cache/
 
 # OS/editor noise
