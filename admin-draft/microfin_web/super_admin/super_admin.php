@@ -2242,6 +2242,12 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                                                     data-owner-name="<?php echo htmlspecialchars($owner_name !== '' ? $owner_name : ($owner_username !== '' ? $owner_username : '—')); ?>"
                                                     data-owner-email="<?php echo htmlspecialchars($t['owner_email'] ?? '—'); ?>"
                                                     data-owner-phone="<?php echo htmlspecialchars($t['owner_phone'] ?? '—'); ?>"
+                                                    data-first-name="<?php echo htmlspecialchars($t['owner_first_name'] ?? ''); ?>"
+                                                    data-last-name="<?php echo htmlspecialchars($t['owner_last_name'] ?? ''); ?>"
+                                                    data-mi="<?php echo htmlspecialchars($t['owner_middle_name'] ?? ''); ?>"
+                                                    data-suffix="<?php echo htmlspecialchars($t['owner_suffix'] ?? ''); ?>"
+                                                    data-company-address="<?php echo htmlspecialchars($t['company_address'] ?? ''); ?>"
+                                                    data-request-type="<?php echo htmlspecialchars($t['request_type'] ?? 'tenant_application'); ?>"
                                                     data-docs='<?php echo htmlspecialchars(json_encode($doc_paths_json), ENT_QUOTES, 'UTF-8'); ?>'
                                                     title="View Tenant Profile">
                                                     <span class="material-symbols-rounded" style="font-size:16px;">visibility</span> View Profile
@@ -2271,33 +2277,7 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                                                         </button>
                                                     </form>
 
-                                                <?php elseif ($status === 'Pending'): ?>
-                                                    <!-- Provision: opens provision modal -->
-                                                    <?php
-                                                    $startup_username = trim((string)($t['owner_username'] ?? ''));
-                                                    $startup_user_label = $startup_username !== '' ? ('@' . $startup_username) : 'No startup user yet';
-                                                    ?>
-                                                    <button class="btn btn-primary btn-sm btn-provision btn-provision-from-demo"
-                                                        data-tenant-name="<?php echo htmlspecialchars($t['tenant_name']); ?>"
-                                                        data-company-email="<?php echo htmlspecialchars($t['owner_email'] ?? ''); ?>"
-                                                        data-plan-tier="<?php echo htmlspecialchars($t['plan_tier'] ?? 'Starter'); ?>"
-                                                        data-request-type="<?php echo htmlspecialchars($t['request_type'] ?? 'tenant_application'); ?>"
-                                                        data-first-name="<?php echo htmlspecialchars($t['owner_first_name'] ?? ''); ?>"
-                                                        data-last-name="<?php echo htmlspecialchars($t['owner_last_name'] ?? ''); ?>"
-                                                        data-mi="<?php echo htmlspecialchars($t['owner_middle_name'] ?? ''); ?>"
-                                                        data-suffix="<?php echo htmlspecialchars($t['owner_suffix'] ?? ''); ?>"
-                                                        data-company-address="<?php echo htmlspecialchars($t['company_address'] ?? ''); ?>"
-                                                        title="Provision Tenant (Startup User: <?php echo htmlspecialchars($startup_user_label); ?>)">
-                                                        <span class="material-symbols-rounded" style="font-size:16px;">rocket_launch</span> Provision <?php echo htmlspecialchars($startup_user_label); ?>
-                                                    </button>
-                                                    <!-- Reject -->
-                                                    <form method="POST" style="display:inline;">
-                                                        <input type="hidden" name="action" value="reject_tenant">
-                                                        <input type="hidden" name="tenant_id" value="<?php echo htmlspecialchars($t['tenant_id']); ?>">
-                                                        <button type="submit" class="btn btn-outline btn-sm btn-outline-danger" title="Reject">
-                                                            <span class="material-symbols-rounded" style="font-size:16px;">close</span> Reject
-                                                        </button>
-                                                    </form>
+
                                                 <?php elseif ($status === 'Active'): ?>
                                                     <!-- View Website -->
                                                     <?php $site_url = sa_build_tenant_login_url((string)$t['tenant_slug']); ?>
@@ -3663,7 +3643,19 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                     </p>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
+                <div id="modal-tenant-profile-actions" style="display: none; gap: 8px;">
+                    <form method="POST" id="modal-reject-tenant-form" style="display:inline;">
+                        <input type="hidden" name="action" value="reject_tenant">
+                        <input type="hidden" name="tenant_id" id="modal-reject-tenant-id" value="">
+                        <button type="submit" class="btn btn-outline-danger">
+                            <span class="material-symbols-rounded" style="font-size:18px;">close</span> Reject
+                        </button>
+                    </form>
+                    <button type="button" class="btn btn-primary btn-provision-from-demo" id="modal-provision-tenant-btn">
+                        <span class="material-symbols-rounded" style="font-size:18px;">rocket_launch</span> Provision
+                    </button>
+                </div>
                 <button type="button" class="btn btn-outline" id="cancel-tenant-profile-modal">Close</button>
             </div>
         </div>

@@ -7,11 +7,11 @@ $charset = 'utf8mb4';
 // ---------------------------------------------------------------
 // Primary (local) DB defaults — Localhost (XAMPP/WAMP) credentials.
 // ---------------------------------------------------------------
-$host = 'maglev.proxy.rlwy.net';
-$port = 10111;
-$db = 'railway';
+$host = 'localhost';
+$port = 3306;
+$db = 'microfin_db';
 $user = 'root';
-$pass = 'lcwnEQrUEDOrGugVxeAuwJHLKLSiHduh';
+$pass = '';
 
 // (Old local fallback variables removed as the primary is now localhost)
 

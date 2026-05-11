@@ -74,9 +74,13 @@ if (!function_exists('mf_is_railway_runtime')) {
     {
         foreach ([
             'RAILWAY_ENVIRONMENT',
+            'RAILWAY_ENVIRONMENT_NAME',
+            'RAILWAY_PROJECT_NAME',
+            'RAILWAY_SERVICE_NAME',
             'RAILWAY_PROJECT_ID',
             'RAILWAY_SERVICE_ID',
             'RAILWAY_PUBLIC_DOMAIN',
+            'RAILWAY_PRIVATE_DOMAIN',
             'RAILWAY_STATIC_URL',
         ] as $key) {
             $value = getenv($key);
@@ -215,12 +219,13 @@ if (!function_exists('mf_resolve_db_targets')) {
         // 2. Resolve Remote/Railway Target (Priority 2 or 1 depending on runtime)
         $remoteTarget = null;
         if ($isRailway) {
+            // Default empty target, will be populated by environment variables below
             $remoteTarget = [
-                'host' => 'maglev.proxy.rlwy.net',
-                'port' => 10111,
-                'db' => 'railway',
-                'user' => 'root',
-                'pass' => 'lcwnEQrUEDOrGugVxeAuwJHLKLSiHduh',
+                'host' => '',
+                'port' => 3306,
+                'db'   => '',
+                'user' => '',
+                'pass' => '',
             ];
 
             $databaseUrl = mf_env_first(['DATABASE_URL', 'MYSQL_URL', 'MYSQL_PUBLIC_URL', 'MYSQL_PRIVATE_URL']);

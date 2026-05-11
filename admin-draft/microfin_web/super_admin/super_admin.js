@@ -70,6 +70,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         profileModalBackdrop.classList.add('show');
+
+        // Handle Provision/Reject actions visibility
+        const actionsDiv = document.getElementById('modal-tenant-profile-actions');
+        if (actionsDiv) {
+            if (data.status === 'Pending') {
+                actionsDiv.style.display = 'flex';
+                
+                // Setup Reject form
+                const rejectTenantId = document.getElementById('modal-reject-tenant-id');
+                if (rejectTenantId) rejectTenantId.value = data.tenantId;
+
+                // Setup Provision button data attributes
+                const provisionBtn = document.getElementById('modal-provision-tenant-btn');
+                if (provisionBtn) {
+                    provisionBtn.setAttribute('data-tenant-name', data.tenantName || '');
+                    provisionBtn.setAttribute('data-company-email', data.ownerEmail || '');
+                    provisionBtn.setAttribute('data-plan-tier', data.plan || 'Starter');
+                    provisionBtn.setAttribute('data-request-type', data.requestType || 'tenant_application');
+                    provisionBtn.setAttribute('data-first-name', data.firstName || '');
+                    provisionBtn.setAttribute('data-last-name', data.lastName || '');
+                    provisionBtn.setAttribute('data-mi', data.mi || '');
+                    provisionBtn.setAttribute('data-suffix', data.suffix || '');
+                    provisionBtn.setAttribute('data-company-address', data.companyAddress || '');
+                }
+            } else {
+                actionsDiv.style.display = 'none';
+            }
+        }
     }
 
     if (btnCloseProfileModal) btnCloseProfileModal.addEventListener('click', closeTenantProfileModal);
@@ -1339,8 +1367,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
 
     function bindProvisionButtons() {
-        const btns = document.querySelectorAll('.btn-provision-from-demo');
+        const btns = document.querySelectorAll('.btn-provision-from-demo:not(.bound)');
         btns.forEach(btn => {
+            btn.classList.add('bound');
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const tenantName = btn.getAttribute('data-tenant-name');
