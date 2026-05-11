@@ -474,12 +474,14 @@ try {
 
     if (mf_db_should_expose_debug()) {
         $response['debug'] = $e->getMessage();
+        $response['dsn'] = $connectionResult['dsn'] ?? 'N/A';
         $response['context'] = [
             'host' => (string)$host,
             'port' => (int)$port,
             'db'   => (string)$db,
             'user' => (string)$user,
-            'mode' => (string)$mf_db_mode
+            'mode' => (string)$mf_db_mode,
+            'failures' => $connectionFailures
         ];
     }
 

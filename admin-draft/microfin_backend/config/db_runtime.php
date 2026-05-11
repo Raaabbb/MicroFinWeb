@@ -268,6 +268,19 @@ if (!function_exists('mf_resolve_db_targets')) {
                     $remoteTarget[$key] = $key === 'port' ? (int) $value : $value;
                 }
             }
+            
+            // Add public proxy fallback if available
+            $publicUrl = mf_env_first(['MYSQL_PUBLIC_URL']);
+            if ($publicUrl !== null) {
+                $publicTarget = mf_database_target_from_url($publicUrl);
+                if ($publicTarget !== null) {
+                    $targets = [$remoteTarget, $publicTarget];
+                } else {
+                    $targets = [$remoteTarget];
+                }
+            } else {
+                $targets = [$remoteTarget];
+            }
         } else {
             $remoteTarget = mf_resolve_public_db_target();
         }
