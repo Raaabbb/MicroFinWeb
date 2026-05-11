@@ -303,6 +303,11 @@ function mf_db_is_retryable_disconnect(\Throwable $error): bool
 
 function mf_db_should_expose_debug(): bool
 {
+    // Always expose debug info on Railway for setup troubleshooting
+    if (defined('MF_DB_MODE_RAILWAY') || mf_env_first(['RAILWAY_SERVICE_ID'])) {
+        return true;
+    }
+
     $flag = mf_env_first(['MF_DB_DEBUG']);
     if ($flag === null) {
         return PHP_SAPI === 'cli';
