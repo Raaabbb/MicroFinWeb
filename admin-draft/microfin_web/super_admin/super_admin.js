@@ -35,6 +35,18 @@ document.addEventListener('DOMContentLoaded', () => {
         setSafeText('tenant-profile-owner-name', data.ownerName);
         setSafeText('tenant-profile-owner-email', data.ownerEmail);
         setSafeText('tenant-profile-owner-phone', data.ownerPhone);
+        
+        // Rejection Reason
+        const rejectionBlock = document.getElementById('tenant-profile-rejection-block');
+        const rejectionReasonEl = document.getElementById('tenant-profile-rejection-reason');
+        if (rejectionBlock && rejectionReasonEl) {
+            if (data.status === 'Rejected' && data.rejectionReason) {
+                rejectionReasonEl.textContent = data.rejectionReason;
+                rejectionBlock.style.display = 'block';
+            } else {
+                rejectionBlock.style.display = 'none';
+            }
+        }
 
         // Initials
         const initialsEl = document.getElementById('tenant-profile-initials');
@@ -77,9 +89,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'Pending') {
                 actionsDiv.style.display = 'flex';
                 
-                // Setup Reject form
-                const rejectTenantId = document.getElementById('modal-reject-tenant-id');
-                if (rejectTenantId) rejectTenantId.value = data.tenantId;
+                // Setup Reject trigger
+                const btnTriggerReject = document.getElementById('modal-trigger-reject-tenant');
+                if (btnTriggerReject) {
+                    btnTriggerReject.onclick = () => {
+                        closeTenantProfileModal();
+                        openTenantRejectionModal(data.tenantId, data.tenantName);
+                    };
+                }
 
                 // Setup Provision button data attributes
                 const provisionBtn = document.getElementById('modal-provision-tenant-btn');
@@ -353,6 +370,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const tenantStatusTenantId = document.getElementById('tenant-status-tenant-id');
     const tenantStatusTenantName = document.getElementById('tenant-status-tenant-name');
     const tenantStatusReason = document.getElementById('tenant-status-reason');
+    const tenantRejectionModalBackdrop = document.getElementById('modal-tenant-rejection-backdrop');
+    const tenantRejectionModalForm = tenantRejectionModalBackdrop ? tenantRejectionModalBackdrop.querySelector('form') : null;
+    const btnCloseTenantRejectionModal = document.getElementById('close-tenant-rejection-modal');
+    const btnCancelTenantRejectionModal = document.getElementById('cancel-tenant-rejection-modal');
+    const tenantRejectionTenantId = document.getElementById('tenant-rejection-tenant-id');
+    const tenantRejectionTenantName = document.getElementById('tenant-rejection-tenant-name');
+    const tenantRejectionReason = document.getElementById('tenant-rejection-reason');
 
     function closeTenantStatusModal() {
         if (!tenantStatusModalBackdrop) {
@@ -382,6 +406,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tenantStatusReason) {
             tenantStatusReason.focus();
         }
+    }
+
+    function closeTenantRejectionModal() {
+        if (!tenantRejectionModalBackdrop) return;
+        tenantRejectionModalBackdrop.classList.remove('show');
+        if (tenantRejectionModalForm) tenantRejectionModalForm.reset();
+    }
+
+    function openTenantRejectionModal(tenantId, tenantName) {
+        if (!tenantRejectionModalBackdrop || !tenantRejectionModalForm) return;
+        tenantRejectionModalForm.reset();
+        if (tenantRejectionTenantId) tenantRejectionTenantId.value = tenantId || '';
+        if (tenantRejectionTenantName) tenantRejectionTenantName.value = tenantName || '';
+        tenantRejectionModalBackdrop.classList.add('show');
+        if (tenantRejectionReason) tenantRejectionReason.focus();
+    }
+
+    if (btnCloseTenantRejectionModal) btnCloseTenantRejectionModal.addEventListener('click', closeTenantRejectionModal);
+    if (btnCancelTenantRejectionModal) btnCancelTenantRejectionModal.addEventListener('click', closeTenantRejectionModal);
+    if (tenantRejectionModalBackdrop) {
+        tenantRejectionModalBackdrop.addEventListener('click', (e) => {
+            if (e.target === tenantRejectionModalBackdrop) closeTenantRejectionModal();
+        });
     }
 
     if (btnCloseTenantStatusModal) btnCloseTenantStatusModal.addEventListener('click', closeTenantStatusModal);

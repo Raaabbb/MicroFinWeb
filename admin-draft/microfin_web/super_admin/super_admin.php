@@ -468,6 +468,10 @@ try {
     $pdo->exec("ALTER TABLE tenants ADD COLUMN concern_category VARCHAR(150) NULL AFTER request_type");
 } catch (Throwable $e) {
 }
+try {
+    $pdo->exec("ALTER TABLE tenants ADD COLUMN rejection_reason TEXT NULL AFTER status");
+} catch (Throwable $e) {
+}
 
 try {
     $pdo->exec("
@@ -1213,15 +1217,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: super_admin.php?section=tenants');
         exit;
     } elseif ($action === 'reject_tenant') {
-        $tenant_id = $_POST['tenant_id'] ?? '';
+        $tenant_id = trim((string)($_POST['tenant_id'] ?? ''));
+        $rejection_reason = trim((string)($_POST['rejection_reason'] ?? ''));
 
-        $update = $pdo->prepare("UPDATE tenants SET status = 'Rejected' WHERE tenant_id = ?");
-        $update->execute([$tenant_id]);
+        if ($tenant_id === '') {
+            $_SESSION['sa_error'] = 'Tenant ID is required.';
+            header('Location: super_admin.php?section=tenants');
+            exit;
+        }
 
-        $log = $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, description, tenant_id) VALUES (?, 'TENANT_REJECTED', 'tenant', 'Tenant application rejected', ?)");
-        $log->execute([$_SESSION['super_admin_id'], $tenant_id]);
+        if ($rejection_reason === '') {
+            $_SESSION['sa_error'] = 'Please provide a reason for rejection.';
+            header('Location: super_admin.php?section=tenants');
+            exit;
+        }
 
-        $_SESSION['sa_flash'] = "Tenant has been rejected.";
+        if (strlen($rejection_reason) > 2000) {
+            $rejection_reason = substr($rejection_reason, 0, 2000);
+        }
+
+        $tenantStmt = $pdo->prepare("SELECT tenant_name FROM tenants WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1");
+        $tenantStmt->execute([$tenant_id]);
+        $tenantName = (string)($tenantStmt->fetchColumn() ?: $tenant_id);
+
+        $update = $pdo->prepare("UPDATE tenants SET status = 'Rejected', rejection_reason = ? WHERE tenant_id = ?");
+        $update->execute([$rejection_reason, $tenant_id]);
+
+        $logDescription = "Tenant application rejected for {$tenantName}. Reason: " . preg_replace('/\s+/', ' ', $rejection_reason);
+        $log = $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, description, tenant_id) VALUES (?, 'TENANT_REJECTED', 'tenant', ?, ?)");
+        $log->execute([$_SESSION['super_admin_id'], $logDescription, $tenant_id]);
+
+        $_SESSION['sa_flash'] = "Application for {$tenantName} has been rejected.";
         header('Location: super_admin.php?section=tenants');
         exit;
     } elseif ($action === 'update_tenant_slug') {
@@ -1472,7 +1498,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS tenant_legitimacy_documents (
 
 // Tenant Management: all tenants
 $tenant_rows_stmt = $pdo->query("
-    SELECT t.tenant_id, t.tenant_name, t.tenant_slug, t.company_address, t.status, t.request_type, t.concern_category, t.plan_tier, t.mrr, t.created_at, t.setup_completed,
+    SELECT t.tenant_id, t.tenant_name, t.tenant_slug, t.company_address, t.status, t.request_type, t.concern_category, t.rejection_reason, t.plan_tier, t.mrr, t.created_at, t.setup_completed,
         owner.owner_username,
         owner.owner_first_name,
         owner.owner_last_name,
@@ -2248,6 +2274,7 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                                                     data-suffix="<?php echo htmlspecialchars($t['owner_suffix'] ?? ''); ?>"
                                                     data-company-address="<?php echo htmlspecialchars($t['company_address'] ?? ''); ?>"
                                                     data-request-type="<?php echo htmlspecialchars($t['request_type'] ?? 'tenant_application'); ?>"
+                                                    data-rejection-reason="<?php echo htmlspecialchars($t['rejection_reason'] ?? ''); ?>"
                                                     data-docs='<?php echo htmlspecialchars(json_encode($doc_paths_json), ENT_QUOTES, 'UTF-8'); ?>'
                                                     title="View Tenant Profile">
                                                     <span class="material-symbols-rounded" style="font-size:16px;">visibility</span> View Profile
@@ -3572,6 +3599,33 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
         </div>
     </div>
 
+    <!-- Tenant Rejection Modal -->
+    <div id="modal-tenant-rejection-backdrop" class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Reject Tenant Application</h2>
+                <button class="icon-btn" id="close-tenant-rejection-modal"><span class="material-symbols-rounded">close</span></button>
+            </div>
+            <form class="modal-body" method="POST" action="">
+                <input type="hidden" name="action" value="reject_tenant">
+                <input type="hidden" name="tenant_id" id="tenant-rejection-tenant-id" value="">
+                <div class="form-group">
+                    <label>Tenant</label>
+                    <input type="text" id="tenant-rejection-tenant-name" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Reason for Rejection<span class="required-mark">*</span></label>
+                    <textarea id="tenant-rejection-reason" class="form-control" name="rejection_reason" rows="5" maxlength="2000" placeholder="Please explain why this application is being rejected." required></textarea>
+                    <small class="form-hint">This reason will be recorded in the system audit logs.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="cancel-tenant-rejection-modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Confirm Rejection</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Tenant Profile Modal -->
     <div id="modal-tenant-profile-backdrop" class="modal-backdrop">
         <div class="modal" style="max-width: 600px;">
@@ -3633,6 +3687,13 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
                     </div>
                 </div>
 
+                <div class="form-group-block" id="tenant-profile-rejection-block" style="display: none; margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 12px; font-size: 0.9rem; text-transform: uppercase; color: var(--error-color); letter-spacing: 0.5px;">Rejection Reason</h4>
+                    <div style="padding: 12px; background: var(--bg-level-1); border-left: 4px solid var(--error-color); border-radius: 8px;">
+                        <p id="tenant-profile-rejection-reason" style="font-size: 0.95rem; line-height: 1.6; color: var(--text-color); margin: 0;"></p>
+                    </div>
+                </div>
+
                 <div class="form-group-block">
                     <h4 style="margin-bottom: 12px; font-size: 0.9rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Legitimacy Documents</h4>
                     <div id="tenant-profile-docs-list" style="display: flex; flex-direction: column; gap: 8px;">
@@ -3645,13 +3706,9 @@ $platformLogoUrl = '../public_website/logo/MicroFin-logo-transparent-temp.png?v=
             </div>
             <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
                 <div id="modal-tenant-profile-actions" style="display: none; gap: 8px;">
-                    <form method="POST" id="modal-reject-tenant-form" style="display:inline;">
-                        <input type="hidden" name="action" value="reject_tenant">
-                        <input type="hidden" name="tenant_id" id="modal-reject-tenant-id" value="">
-                        <button type="submit" class="btn btn-outline-danger">
-                            <span class="material-symbols-rounded" style="font-size:18px;">close</span> Reject
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-outline-danger" id="modal-trigger-reject-tenant">
+                        <span class="material-symbols-rounded" style="font-size:18px;">close</span> Reject
+                    </button>
                     <button type="button" class="btn btn-primary btn-provision-from-demo" id="modal-provision-tenant-btn">
                         <span class="material-symbols-rounded" style="font-size:18px;">rocket_launch</span> Provision
                     </button>
