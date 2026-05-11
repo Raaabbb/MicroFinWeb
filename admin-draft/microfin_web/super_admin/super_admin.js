@@ -92,10 +92,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Setup Reject trigger
                 const btnTriggerReject = document.getElementById('modal-trigger-reject-tenant');
                 if (btnTriggerReject) {
-                    btnTriggerReject.onclick = () => {
-                        closeTenantProfileModal();
-                        openTenantRejectionModal(data.tenantId, data.tenantName);
-                    };
+                    btnTriggerReject.dataset.targetTenantId = data.tenantId || '';
+                    btnTriggerReject.dataset.targetTenantName = data.tenantName || '';
+                    if (!btnTriggerReject.dataset.bound) {
+                        btnTriggerReject.dataset.bound = 'true';
+                        btnTriggerReject.addEventListener('click', () => {
+                            const tid = btnTriggerReject.dataset.targetTenantId;
+                            const tname = btnTriggerReject.dataset.targetTenantName;
+                            closeTenantProfileModal();
+                            openTenantRejectionModal(tid, tname);
+                        });
+                    }
                 }
 
                 // Setup Provision button data attributes
@@ -1478,6 +1485,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (modalBackdrop) modalBackdrop.classList.add('show');
+                closeTenantProfileModal();
             });
         });
     }
