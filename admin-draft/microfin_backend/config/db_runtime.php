@@ -224,6 +224,15 @@ if (!function_exists('mf_resolve_db_targets')) {
 
         // 2. Resolve Remote/Railway Target (Priority 2 or 1 depending on runtime)
         $remoteTarget = null;
+        if ($isRailway) {
+            $remoteTarget = [
+                'host' => '',
+                'port' => 3306,
+                'db'   => '',
+                'user' => '',
+                'pass' => '',
+            ];
+
             // AGGRESSIVE RESOLUTION: Check all possible host sources
             $hostCandidates = [
                 mf_env_first(['MYSQLHOST', 'DB_HOST']),
