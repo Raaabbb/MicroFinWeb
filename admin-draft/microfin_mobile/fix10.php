@@ -1,6 +1,6 @@
 <?php
 
-$file = 'c:\\xampp\\htdocs\\admin-draft-withmobile\\admin-draft\\microfin_platform\\backend\\api_clients.php';
+$file = 'c:\\xampp\\htdocs\\admin-draft-withmobile\\admin-draft\\microfin_web\\backend\\api_clients.php';
 $content = file_get_contents($file);
 
 $good_code = <<<'PHP'

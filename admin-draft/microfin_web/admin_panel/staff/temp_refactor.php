@@ -1,5 +1,5 @@
 <?php
-$file = 'c:/xampp/htdocs/admin-draft-withmobile/admin-draft/microfin_platform/admin_panel/staff/dashboard.php';
+$file = 'c:/xampp/htdocs/admin-draft-withmobile/admin-draft/microfin_web/admin_panel/staff/dashboard.php';
 $lines = file($file);
 
 // 1. Remove clients db block

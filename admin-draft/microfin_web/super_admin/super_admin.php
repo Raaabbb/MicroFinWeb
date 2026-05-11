@@ -213,7 +213,7 @@ function sa_normalize_app_base_url(string $baseUrl): string
 
 function sa_resolve_app_base_url(): string
 {
-    $defaultScript = '/admin-draft-withmobile/admin-draft/microfin_platform/super_admin/super_admin.php';
+    $defaultScript = '/admin-draft-withmobile/admin-draft/microfin_web/super_admin/super_admin.php';
     $basePath = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['PHP_SELF'] ?? $defaultScript))), '/\\');
     $explicitBase = trim((string) (getenv('APP_BASE_URL') ?: getenv('PUBLIC_BASE_URL') ?: ''));
 

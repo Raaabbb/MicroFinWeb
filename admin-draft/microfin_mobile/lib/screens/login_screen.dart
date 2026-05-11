@@ -451,7 +451,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     child: Image.network(
                                       tenant.logoPath.startsWith('http')
                                           ? tenant.logoPath
-                                          : '${ApiConfig.appBaseUrl}/microfin_platform/uploads/tenant_logos/${tenant.logoPath}',
+                                          : '${ApiConfig.appBaseUrl}/admin-draft/microfin_web/uploads/tenant_logos/${tenant.logoPath}',
                                       fit: BoxFit.contain,
                                       errorBuilder: (_, __, ___) => const Icon(
                                         Icons.business_rounded,

@@ -1,5 +1,5 @@
 <?php
-$f = 'c:\xampp\htdocs\admin-draft-withmobile\admin-draft\microfin_platform\backend\api_dashboard.php';
+$f = 'c:\xampp\htdocs\admin-draft-withmobile\admin-draft\microfin_web\backend\api_dashboard.php';
 $c = file_get_contents($f);
 
 // 1. Today's collections

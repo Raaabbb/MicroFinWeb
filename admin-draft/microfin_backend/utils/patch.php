@@ -1,5 +1,5 @@
 <?php
-$f = 'c:\xampp\htdocs\admin-draft-withmobile\admin-draft\microfin_platform\backend\api_payments.php';
+$f = 'c:\xampp\htdocs\admin-draft-withmobile\admin-draft\microfin_web\backend\api_payments.php';
 $c = file_get_contents($f);
 
 $old_query = <<<'EOD'

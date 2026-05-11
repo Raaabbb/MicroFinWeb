@@ -41,13 +41,13 @@ if (!function_exists('mf_document_candidate_relative_paths')) {
             $candidates[] = substr($normalized, strlen('microfin_mobile/'));
         }
 
-        if (str_starts_with($normalized, 'microfin_platform/uploads/')) {
-            $candidates[] = substr($normalized, strlen('microfin_platform/'));
+        if (str_starts_with($normalized, 'admin-draft/microfin_web/uploads/')) {
+            $candidates[] = substr($normalized, strlen('admin-draft/microfin_web/'));
         }
 
         if (str_starts_with($normalized, 'uploads/')) {
             $candidates[] = 'microfin_mobile/' . $normalized;
-            $candidates[] = 'microfin_platform/' . $normalized;
+            $candidates[] = 'admin-draft/microfin_web/' . $normalized;
         }
 
         return array_values(array_unique(array_filter($candidates, static fn ($item) => is_string($item) && $item !== '')));

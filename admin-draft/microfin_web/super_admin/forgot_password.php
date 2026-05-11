@@ -25,7 +25,7 @@ function sa_password_reset_link(string $token): string
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $forwardedProto === 'https';
     $protocol = $isHttps ? 'https://' : 'http://';
     $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/microfin_platform/super_admin/forgot_password.php'));
+    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/admin-draft/microfin_web/super_admin/forgot_password.php'));
     $resetPath = rtrim($scriptDir, '/') . '/reset_password.php';
 
     return $protocol . $domainName . $resetPath . '?token=' . urlencode($token);

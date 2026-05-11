@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'])) {
             $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $forwardedProto === 'https';
             $protocol = $isHttps ? "https://" : "http://";
             $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/microfin_platform/tenant_login/forgot_password.php'));
+            $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/admin-draft/microfin_web/tenant_login/forgot_password.php'));
             $resetPath = rtrim($scriptDir, '/') . '/reset_password.php';
             $reset_link = $protocol . $domainName . $resetPath . '?token=' . urlencode($token);
 

@@ -2,7 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "bash microfin_platform/start.sh"
+startCommand = "bash microfin_web/start.sh"
 restartPolicyType = "ON_FAILURE"
 
 # Shared APK note:

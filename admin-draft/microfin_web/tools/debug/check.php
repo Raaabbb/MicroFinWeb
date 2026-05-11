@@ -3,7 +3,7 @@ require_once __DIR__ . '/../bootstrap.php';
 
 libxml_use_internal_errors(true);
 
-$defaultUrl = 'http://localhost/admin-draft-withmobile/admin-draft/microfin_platform/admin_panel/admin.php';
+$defaultUrl = 'http://localhost/admin-draft-withmobile/admin-draft/microfin_web/admin_panel/admin.php';
 $platformRoot = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, mf_platform_root());
 $htdocsMarker = DIRECTORY_SEPARATOR . 'htdocs' . DIRECTORY_SEPARATOR;
 $markerPos = stripos($platformRoot, $htdocsMarker);
