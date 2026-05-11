@@ -338,6 +338,55 @@ function sa_send_tenant_deactivation_email(PDO $pdo, string $tenantId, string $r
     return mf_send_brevo_email((string)$contact['email'], "{$tenantNameRaw} - Account Deactivation Notice", $html);
 }
 
+function sa_send_tenant_rejection_email(PDO $pdo, string $tenantId, string $reason): string
+{
+    if (!function_exists('mf_send_brevo_email')) {
+        return 'Brevo email helper is unavailable.';
+    }
+
+    $contact = sa_get_tenant_contact($pdo, $tenantId);
+    if (!$contact || trim((string)($contact['email'] ?? '')) === '') {
+        return 'No tenant contact email found.';
+    }
+
+    $tenantNameRaw = trim((string)($contact['tenant_name'] ?? 'MicroFin Applicant'));
+    $tenantName = htmlspecialchars($tenantNameRaw, ENT_QUOTES, 'UTF-8');
+    $recipientName = trim((string)($contact['first_name'] ?? '') . ' ' . (string)($contact['last_name'] ?? ''));
+    $recipientName = $recipientName !== '' ? $recipientName : 'Applicant';
+    $recipientName = htmlspecialchars($recipientName, ENT_QUOTES, 'UTF-8');
+    $reasonHtml = nl2br(htmlspecialchars($reason, ENT_QUOTES, 'UTF-8'));
+
+    $html = mf_email_template([
+        'accent' => '#b91c1c',
+        'eyebrow' => 'Application Status Update',
+        'title' => 'Application Not Approved',
+        'preheader' => "Updates regarding your application for {$tenantNameRaw}.",
+        'intro_html' => "
+            <p style=\"margin: 0 0 14px; font-family: Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #334155;\">
+                Hello {$recipientName},
+            </p>
+            <p style=\"margin: 0 0 14px; font-family: Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #334155;\">
+                Thank you for your interest in the MicroFin platform. After reviewing your application for <strong>{$tenantName}</strong>, we regret to inform you that we are unable to approve your request at this time.
+            </p>
+        ",
+        'body_html' => mf_email_panel(
+            'Review Feedback',
+            "
+                <div style=\"padding: 12px 14px; background: #ffffff; border: 1px solid #fecaca; border-radius: 12px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #334155;\">
+                    {$reasonHtml}
+                </div>
+            ",
+            'danger'
+        ) . "
+            <p style=\"margin: 14px 0 0; font-family: Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #334155;\">
+                We appreciate the time you took to apply. If you have questions regarding this decision, you may reply directly to this email.
+            </p>
+        ",
+    ]);
+
+    return mf_send_brevo_email((string)$contact['email'], "MicroFin Application Update: {$tenantNameRaw}", $html);
+}
+
 $provision_success = '';
 $provision_error = '';
 
@@ -1247,7 +1296,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $log = $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, description, tenant_id) VALUES (?, 'TENANT_REJECTED', 'tenant', ?, ?)");
         $log->execute([$_SESSION['super_admin_id'], $logDescription, $tenant_id]);
 
-        $_SESSION['sa_flash'] = "Application for {$tenantName} has been rejected.";
+        $emailStatus = '';
+        $emailResult = sa_send_tenant_rejection_email($pdo, $tenant_id, $rejection_reason);
+        if ($emailResult === 'Email sent successfully.') {
+            $emailStatus = ' A rejection notice has been sent to the applicant.';
+        } else {
+            $emailStatus = ' (Note: Rejection email failed: ' . $emailResult . ')';
+        }
+
+        $_SESSION['sa_flash'] = "Application for {$tenantName} has been rejected." . $emailStatus;
         header('Location: super_admin.php?section=tenants');
         exit;
     } elseif ($action === 'update_tenant_slug') {
