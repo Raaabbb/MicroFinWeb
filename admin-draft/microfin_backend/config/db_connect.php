@@ -352,33 +352,22 @@ function mf_db_connect_target(array $candidateTarget, string $charset, array $op
         $charset
     );
 
-    $attempt = 0;
-    do {
-        $attempt++;
+    try {
+        $pdo = new PDO(
+            $targetDsn,
+            (string) $candidateTarget['user'],
+            (string) $candidateTarget['pass'],
+            $options
+        );
 
-        try {
-            $pdo = new PDO(
-                $targetDsn,
-                (string) $candidateTarget['user'],
-                (string) $candidateTarget['pass'],
-                $options
-            );
-
-            return [
-                'pdo' => $pdo,
-                'attempts' => $attempt,
-                'dsn' => $targetDsn,
-            ];
-        } catch (\Throwable $connectionError) {
-            if ($attempt >= 2 || !mf_db_is_retryable_disconnect($connectionError)) {
-                throw $connectionError;
-            }
-
-            usleep(250000);
-        }
-    } while ($attempt < 2);
-
-    throw new RuntimeException('Unable to establish database connection.');
+        return [
+            'pdo' => $pdo,
+            'attempts' => 1,
+            'dsn' => $targetDsn,
+        ];
+    } catch (\Throwable $connectionError) {
+        throw $connectionError;
+    }
 }
 
 // PDO Options
