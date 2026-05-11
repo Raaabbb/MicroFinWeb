@@ -224,34 +224,38 @@ if (!function_exists('mf_resolve_db_targets')) {
 
         // 2. Resolve Remote/Railway Target (Priority 2 or 1 depending on runtime)
         $remoteTarget = null;
-        if ($isRailway) {
-            // Default empty target, will be populated by environment variables below
-            $remoteTarget = [
-                'host' => '',
-                'port' => 3306,
-                'db'   => '',
-                'user' => '',
-                'pass' => '',
+            // AGGRESSIVE RESOLUTION: Check all possible host sources
+            $hostCandidates = [
+                mf_env_first(['MYSQLHOST', 'DB_HOST']),
+                mf_env_first(['RAILWAY_PRIVATE_DOMAIN']),
+                'mysql.railway.internal' // Final internal fallback
             ];
+            
+            foreach ($hostCandidates as $h) {
+                if ($h !== null && trim($h) !== '') {
+                    $remoteTarget['host'] = $h;
+                    break;
+                }
+            }
 
-            $databaseUrl = mf_env_first(['DATABASE_URL', 'MYSQL_URL', 'MYSQL_PUBLIC_URL', 'MYSQL_PRIVATE_URL']);
+            $databaseUrl = mf_env_first(['DATABASE_URL', 'MYSQL_URL', 'MYSQL_PRIVATE_URL', 'MYSQL_PUBLIC_URL']);
             if ($databaseUrl !== null) {
                 $parsedTarget = mf_database_target_from_url($databaseUrl);
                 if ($parsedTarget !== null) {
+                    // If URL provides a host, use it
                     $remoteTarget = array_merge($remoteTarget, $parsedTarget);
                 }
             }
 
             $envOverrides = [
-                'host' => mf_env_first(['MYSQLHOST', 'DB_HOST']),
                 'port' => mf_env_first(['MYSQLPORT', 'DB_PORT']),
-                'db' => mf_env_first(['MYSQLDATABASE', 'DB_NAME']),
+                'db'   => mf_env_first(['MYSQLDATABASE', 'DB_NAME']),
                 'user' => mf_env_first(['MYSQLUSER', 'DB_USER']),
                 'pass' => mf_env_first(['MYSQLPASSWORD', 'DB_PASSWORD']),
             ];
 
             foreach ($envOverrides as $key => $value) {
-                if ($value !== null) {
+                if ($value !== null && trim((string)$value) !== '') {
                     $remoteTarget[$key] = $key === 'port' ? (int) $value : $value;
                 }
             }
