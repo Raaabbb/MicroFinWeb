@@ -260,13 +260,18 @@ if (!function_exists('mf_resolve_db_targets')) {
                 'port' => mf_env_first(['MYSQLPORT', 'DB_PORT']),
                 'db'   => mf_env_first(['MYSQLDATABASE', 'DB_NAME']),
                 'user' => mf_env_first(['MYSQLUSER', 'DB_USER']),
-                'pass' => mf_env_first(['MYSQLPASSWORD', 'DB_PASSWORD']),
+                'pass' => mf_env_first(['MYSQLPASSWORD', 'MYSQL_ROOT_PASSWORD', 'DB_PASSWORD']),
             ];
 
             foreach ($envOverrides as $key => $value) {
                 if ($value !== null && trim((string)$value) !== '') {
                     $remoteTarget[$key] = $key === 'port' ? (int) $value : $value;
                 }
+            }
+
+            // EXTRA FORCE: If we have a password but it's not in the target yet, put it there
+            if (empty($remoteTarget['pass'])) {
+                $remoteTarget['pass'] = mf_env_first(['MYSQLPASSWORD', 'MYSQL_ROOT_PASSWORD']);
             }
             
             // Add public proxy fallback if available

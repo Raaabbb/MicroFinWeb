@@ -35,11 +35,13 @@ function mf_env_first(array $keys)
 
 function mf_db_target_signature(array $target): string
 {
+    $hasPass = !empty($target['pass']) ? 'YES' : 'NO';
     return implode('|', [
         (string) ($target['host'] ?? ''),
         (string) ($target['port'] ?? ''),
         (string) ($target['db'] ?? ''),
         (string) ($target['user'] ?? ''),
+        "PASS:{$hasPass}"
     ]);
 }
 
