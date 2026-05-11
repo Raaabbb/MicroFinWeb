@@ -25,20 +25,23 @@ if (!function_exists('mf_get_email_config')) {
         }
 
         // Helper to resolve config from ENV or local_config
-        $resolve = function($key, $default) use ($mobileLocalConfig) {
+        $resolve = function ($key, $default) use ($mobileLocalConfig) {
             $env = getenv($key);
-            if ($env !== false && $env !== '') return $env;
-            if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
-            if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
+            if ($env !== false && $env !== '')
+                return $env;
+            if (isset($_ENV[$key]) && $_ENV[$key] !== '')
+                return $_ENV[$key];
+            if (isset($_SERVER[$key]) && $_SERVER[$key] !== '')
+                return $_SERVER[$key];
             return $mobileLocalConfig[$key] ?? $default;
         };
 
         $emailConfig = [
-            'api_key'      => $resolve('BREVO_API_KEY', 'YOUR_BREVO_API_KEY'),
+            'api_key' => $resolve('BREVO_API_KEY', 'YOUR_BREVO_API_KEY'),
             'sender_email' => $resolve('BREVO_SENDER_EMAIL', 'microfin.statements@gmail.com'),
-            'sender_name'  => $resolve('BREVO_SENDER_NAME', 'MicroFin'),
-            'sandbox'      => filter_var($resolve('BREVO_SANDBOX_MODE', false), FILTER_VALIDATE_BOOLEAN),
-            'api_url'      => 'https://api.brevo.com/v3/smtp/email',
+            'sender_name' => $resolve('BREVO_SENDER_NAME', 'MicroFin'),
+            'sandbox' => filter_var($resolve('BREVO_SANDBOX_MODE', false), FILTER_VALIDATE_BOOLEAN),
+            'api_url' => 'https://api.brevo.com/v3/smtp/email',
         ];
 
         return $emailConfig;
@@ -65,7 +68,7 @@ if (!function_exists('mf_render_email_layout')) {
     {
         $config = mf_get_email_config();
         $appUrl = 'https://microfinwebb-production.up.railway.app'; // Fallback
-        
+
         $safePreheader = htmlspecialchars($preheader, ENT_QUOTES, 'UTF-8');
         $safeHeadline = htmlspecialchars($headline, ENT_QUOTES, 'UTF-8');
         $safeAccent = htmlspecialchars($accentColor, ENT_QUOTES, 'UTF-8');
@@ -116,7 +119,7 @@ if (!function_exists('mf_send_brevo_email')) {
     {
         $config = mf_get_email_config();
         $recipient = trim((string) $toEmail);
-        
+
         if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
             return 'Invalid recipient email address.';
         }
@@ -150,7 +153,7 @@ if (!function_exists('mf_send_brevo_email')) {
             'Content-Type: application/json',
             'Accept: application/json',
         ];
-        
+
         // Anti-Suspension Protection: Always ensure strict headers
         if ($config['sandbox']) {
             $headers[] = 'X-Sib-Sandbox: drop';

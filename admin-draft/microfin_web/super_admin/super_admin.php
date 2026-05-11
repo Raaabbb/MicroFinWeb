@@ -201,11 +201,11 @@ function sa_normalize_app_base_url(string $baseUrl): string
 
     $path = trim((string) (parse_url($baseUrl, PHP_URL_PATH) ?? ''));
     if ($path === '' || $path === '/') {
-        return $baseUrl . '/microfin_platform';
+        return $baseUrl . '/admin-draft/microfin_web';
     }
 
-    if (!preg_match('~(?:^|/)microfin_platform/?$~i', $path)) {
-        return $baseUrl . '/microfin_platform';
+    if (!preg_match('~(?:^|/)admin-draft/microfin_web/?$~i', $path)) {
+        return $baseUrl . '/admin-draft/microfin_web';
     }
 
     return $baseUrl;
@@ -226,7 +226,7 @@ function sa_resolve_app_base_url(): string
             return sa_normalize_app_base_url($railwayBase);
         }
 
-        return 'https://microfinwebb-production.up.railway.app/microfin_platform';
+        return 'https://microfinweb-production.up.railway.app/admin-draft/microfin_web';
     }
 
     if ($explicitBase !== '') {

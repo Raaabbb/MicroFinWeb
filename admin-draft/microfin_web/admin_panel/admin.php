@@ -234,15 +234,11 @@ function admin_normalize_app_base_url(string $baseUrl): string
     $path = trim((string) (parse_url($baseUrl, PHP_URL_PATH) ?? ''));
 
     if ($path === '' || $path === '/') {
-
-        return $baseUrl . '/microfin_platform';
+        return $baseUrl . '/admin-draft/microfin_web';
     }
 
-
-
-    if (!preg_match('~(?:^|/)microfin_platform/?$~i', $path)) {
-
-        return $baseUrl . '/microfin_platform';
+    if (!preg_match('~(?:^|/)admin-draft/microfin_web/?$~i', $path)) {
+        return $baseUrl . '/admin-draft/microfin_web';
     }
 
 
@@ -278,7 +274,7 @@ function admin_build_tenant_login_url(string $tenantSlug): string
 
 
 
-        return 'https://microfinwebb-production.up.railway.app/microfin_platform/tenant_login/login.php?s=' . $safeSlug;
+        return 'https://microfinweb-production.up.railway.app/admin-draft/microfin_web/tenant_login/login.php?s=' . $safeSlug;
     }
 
 
@@ -292,7 +288,7 @@ function admin_build_tenant_login_url(string $tenantSlug): string
 
     $requestHost = trim((string) ($_SERVER['HTTP_HOST'] ?? 'localhost'));
 
-    $defaultScript = '/admin-draft-withmobile/admin-draft/microfin_platform/admin_panel/admin.php';
+    $defaultScript = '/admin-draft-withmobile/admin-draft/microfin_web/admin_panel/admin.php';
 
     $basePath = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['PHP_SELF'] ?? $defaultScript))), '/\\');
 
